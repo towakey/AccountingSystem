@@ -27,6 +27,9 @@ if (!isset($_SESSION)) {
                             設定
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
+                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#settingsModal">入力設定</a></li>
+                            <li><a class="dropdown-item" href="payment_methods.php">決済方法管理</a></li>
+                            <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="change_password.php">パスワード変更</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="logout.php">ログアウト</a></li>
