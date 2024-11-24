@@ -1,0 +1,298 @@
+/* NERV Theme - Inspired by Neon Genesis Evangelion */
+:root {
+    --nerv-green: #3f3;
+    --nerv-dark-green: #003300;
+    --nerv-black: #000000;
+    --nerv-red: #ff3333;
+    --nerv-orange: #ff6600;
+    --nerv-text: #fff;
+    --nerv-text-muted: #aaa;
+}
+
+body.nerv-theme {
+    background-color: var(--nerv-black);
+    color: var(--nerv-text);
+    font-family: 'Share Tech Mono', monospace;
+}
+
+/* Navbar styling */
+.nerv-theme .navbar {
+    background-color: var(--nerv-dark-green) !important;
+    border-bottom: 2px solid var(--nerv-green);
+}
+
+.nerv-theme .navbar-brand,
+.nerv-theme .nav-link {
+    color: var(--nerv-green) !important;
+    text-transform: uppercase;
+}
+
+/* Card styling */
+.nerv-theme .card {
+    background-color: rgba(0, 51, 0, 0.8);
+    border: 1px solid var(--nerv-green);
+    box-shadow: 0 0 10px var(--nerv-green);
+}
+
+.nerv-theme .card-header {
+    background-color: var(--nerv-dark-green);
+    border-bottom: 1px solid var(--nerv-green);
+    text-transform: uppercase;
+    color: var(--nerv-green);
+}
+
+.nerv-theme .card-title {
+    color: var(--nerv-green);
+}
+
+/* Table styling */
+.nerv-theme .table {
+    color: var(--nerv-text);
+    border-color: var(--nerv-green);
+    background-color: var(--nerv-black);
+}
+
+.nerv-theme .table thead th {
+    background-color: var(--nerv-dark-green) !important;
+    border-color: var(--nerv-green);
+    text-transform: uppercase;
+    color: var(--nerv-green);
+}
+
+.nerv-theme .table tbody td {
+    border-color: var(--nerv-green);
+    color: var(--nerv-text);
+    background-color: transparent !important;
+}
+
+.nerv-theme .table-striped > tbody > tr:nth-of-type(odd) > * {
+    background-color: rgba(0, 51, 0, 0.3) !important;
+}
+
+.nerv-theme .table-striped > tbody > tr:nth-of-type(even) > * {
+    background-color: rgba(0, 0, 0, 0.9) !important;
+}
+
+.nerv-theme .table-hover tbody tr:hover td {
+    background-color: rgba(0, 255, 0, 0.1) !important;
+    color: var(--nerv-green);
+}
+
+.nerv-theme .table-responsive {
+    background-color: var(--nerv-black);
+}
+
+/* Additional table text colors */
+.nerv-theme .table .text-success {
+    color: var(--nerv-green) !important;
+}
+
+.nerv-theme .table .text-danger {
+    color: var(--nerv-red) !important;
+}
+
+.nerv-theme .table .text-end {
+    color: var(--nerv-text) !important;
+}
+
+/* Balance amounts */
+.nerv-theme .text-success {
+    color: var(--nerv-green) !important;
+}
+
+.nerv-theme .text-danger {
+    color: var(--nerv-red) !important;
+}
+
+.nerv-theme .balance-amount {
+    color: var(--nerv-text);
+    font-weight: bold;
+}
+
+.nerv-theme .income-amount {
+    color: var(--nerv-green);
+    font-weight: bold;
+}
+
+.nerv-theme .expense-amount {
+    color: var(--nerv-red);
+    font-weight: bold;
+}
+
+/* DataVIEW headers */
+.nerv-theme h1, 
+.nerv-theme h2, 
+.nerv-theme h3, 
+.nerv-theme h4, 
+.nerv-theme h5, 
+.nerv-theme h6 {
+    color: var(--nerv-green);
+}
+
+.nerv-theme .data-header {
+    color: var(--nerv-green);
+    text-transform: uppercase;
+    font-weight: bold;
+    border-bottom: 1px solid var(--nerv-green);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+/* Form controls */
+.nerv-theme .form-control,
+.nerv-theme .form-select {
+    background-color: var(--nerv-black);
+    border: 1px solid var(--nerv-green);
+    color: var(--nerv-text);
+}
+
+.nerv-theme .form-control:focus,
+.nerv-theme .form-select:focus {
+    background-color: var(--nerv-black);
+    border-color: var(--nerv-green);
+    box-shadow: 0 0 0 0.25rem rgba(0, 255, 0, 0.25);
+    color: var(--nerv-text);
+}
+
+.nerv-theme .form-control::placeholder {
+    color: var(--nerv-text-muted);
+}
+
+.nerv-theme .form-text {
+    color: var(--nerv-text-muted);
+}
+
+/* Buttons */
+.nerv-theme .btn-primary {
+    background-color: var(--nerv-dark-green);
+    border-color: var(--nerv-green);
+    color: var(--nerv-green);
+}
+
+.nerv-theme .btn-primary:hover {
+    background-color: var(--nerv-green);
+    color: var(--nerv-black);
+}
+
+.nerv-theme .btn-outline-danger {
+    border-color: var(--nerv-red);
+    color: var(--nerv-red);
+}
+
+.nerv-theme .btn-outline-danger:hover {
+    background-color: var(--nerv-red);
+    color: var(--nerv-black);
+}
+
+/* Alerts */
+.nerv-theme .alert-success {
+    background-color: var(--nerv-dark-green);
+    border-color: var(--nerv-green);
+    color: var(--nerv-green);
+}
+
+.nerv-theme .alert-danger {
+    background-color: rgba(255, 0, 0, 0.2);
+    border-color: var(--nerv-red);
+    color: var(--nerv-red);
+}
+
+/* Modal styling */
+.nerv-theme .modal-content {
+    background-color: var(--nerv-black);
+    border: 1px solid var(--nerv-green);
+}
+
+.nerv-theme .modal-header {
+    border-bottom: 1px solid var(--nerv-green);
+}
+
+.nerv-theme .modal-footer {
+    border-top: 1px solid var(--nerv-green);
+}
+
+/* HUD-like elements */
+.nerv-theme .card::before {
+    content: "NERV-SYS";
+    position: absolute;
+    top: -10px;
+    right: 10px;
+    color: var(--nerv-green);
+    font-size: 0.8em;
+    background-color: var(--nerv-black);
+    padding: 0 5px;
+}
+
+.nerv-theme .table::before {
+    content: "DATA-VIEW";
+    position: absolute;
+    top: -10px;
+    left: 10px;
+    color: var(--nerv-green);
+    font-size: 0.8em;
+    background-color: var(--nerv-black);
+    padding: 0 5px;
+}
+
+/* Status indicators */
+.nerv-theme .status-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+    animation: blink 2s infinite;
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.3; }
+    100% { opacity: 1; }
+}
+
+/* Scrollbar styling */
+.nerv-theme ::-webkit-scrollbar {
+    width: 8px;
+}
+
+.nerv-theme ::-webkit-scrollbar-track {
+    background: var(--nerv-black);
+}
+
+.nerv-theme ::-webkit-scrollbar-thumb {
+    background: var(--nerv-green);
+}
+
+/* Text selection */
+.nerv-theme ::selection {
+    background: var(--nerv-green);
+    color: var(--nerv-black);
+}
+
+/* Additional text color adjustments */
+.nerv-theme .form-check-label {
+    color: var(--nerv-text);
+}
+
+.nerv-theme .dropdown-menu {
+    background-color: var(--nerv-black);
+    border-color: var(--nerv-green);
+}
+
+.nerv-theme .dropdown-item {
+    color: var(--nerv-text);
+}
+
+.nerv-theme .dropdown-item:hover {
+    background-color: var(--nerv-dark-green);
+    color: var(--nerv-green);
+}
+
+/* Links */
+.nerv-theme a {
+    color: var(--nerv-green);
+}
+
+.nerv-theme a:hover {
+    color: #6f6;
+}
