@@ -91,4 +91,27 @@ function format_currency($amount, $currency = null) {
             return '¥' . number_format($amount);
     }
 }
+
+// テーブルが存在するかチェックする関数
+function table_exists($pdo, $table_name) {
+    try {
+        $stmt = $pdo->query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='" . SQLite3::escapeString($table_name) . "'");
+        return $stmt->fetchColumn() > 0;
+    } catch (PDOException $e) {
+        return false;
+    }
+}
+
+// 項目名の履歴を保存
+function saveProductHistory($pdo, $user_id, $product_name) {
+    try {
+        $stmt = $pdo->prepare("
+            INSERT OR REPLACE INTO products (user_id, product_name, last_used)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+        ");
+        $stmt->execute([$user_id, $product_name]);
+    } catch (PDOException $e) {
+        error_log('Error saving product history: ' . $e->getMessage());
+    }
+}
 ?>

@@ -1,12 +1,12 @@
 <?php
-require_once 'db.php';
+session_start();
 require_once 'functions.php';
+require_once 'db.php';
 
-// システムが初期化されているかチェック
 try {
-    $db = new PDO('sqlite:kakeibo.db');
-    $stmt = $db->query("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='config'");
-    if ($stmt->fetchColumn() === 0) {
+    $pdo = new PDO('sqlite:kakeibo.db');
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    if (!table_exists($pdo, 'config')) {
         header('Location: setup.php');
         exit;
     }
@@ -14,6 +14,17 @@ try {
     header('Location: setup.php');
     exit;
 }
+
+// 項目名の履歴を取得
+$stmt = $pdo->prepare("
+    SELECT DISTINCT product_name 
+    FROM products 
+    WHERE user_id = ? 
+    ORDER BY last_used DESC 
+    LIMIT 10
+");
+$stmt->execute([$_SESSION['user_id']]);
+$product_history = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
 check_login();
 
@@ -165,6 +176,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'edit') {
                     
                     if (!empty($item_name) && !empty($item_price)) {
                         $stmt->execute([$transaction_id, $item_name, $item_price]);
+                        $product_stmt = $pdo->prepare("INSERT OR REPLACE INTO products (user_id, product_name, last_used) VALUES (?, ?, CURRENT_TIMESTAMP)");
+                        $product_stmt->execute([$user_id, $item_name]);
                     }
                 }
             }
@@ -180,6 +193,34 @@ if (isset($_POST['action']) && $_POST['action'] === 'edit') {
     }
     header('Location: ' . $_SERVER['PHP_SELF']);
     exit;
+}
+
+if (isset($_POST['action'])) {
+    switch ($_POST['action']) {
+        case 'delete_transaction':
+            try {
+                $pdo->beginTransaction();
+                
+                // 取引に関連する項目を削除
+                $stmt = $pdo->prepare("DELETE FROM transaction_items WHERE transaction_id = ?");
+                $stmt->execute([$_POST['transaction_id']]);
+                
+                // 取引を削除
+                $stmt = $pdo->prepare("DELETE FROM kakeibo_data WHERE id = ? AND user_id = ?");
+                $stmt->execute([$_POST['transaction_id'], $_SESSION['user_id']]);
+                
+                $pdo->commit();
+                $_SESSION['alert'] = ['type' => 'success', 'message' => '取引を削除しました。'];
+            } catch (PDOException $e) {
+                $pdo->rollBack();
+                $_SESSION['alert'] = ['type' => 'danger', 'message' => 'エラーが発生しました: ' . $e->getMessage()];
+            }
+            break;
+
+        case 'add_transaction':
+            // 処理は上記の入力処理で実行される
+            break;
+    }
 }
 
 // 取引履歴の取得
@@ -241,7 +282,7 @@ try {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>家計簿アプリ</title>
+    <title>家計簿システム</title>
     <?php if ($user_settings['theme'] === 'nerv'): ?>
         <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -286,38 +327,8 @@ try {
         <?php unset($_SESSION['alert']); ?>
     <?php endif; ?>
 
+    <?php include 'navbar.php'; ?>
     <div class="container">
-        <nav class="navbar navbar-expand-lg navbar-<?= $user_settings['theme'] === 'light' ? 'light bg-light' : ($user_settings['theme'] === 'nerv' ? 'dark bg-dark' : 'dark bg-primary') ?>">
-            <div class="container-fluid">
-                <a class="navbar-brand" href="#">家計簿アプリ</a>
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                <div class="collapse navbar-collapse" id="navbarNav">
-                    <ul class="navbar-nav">
-                        <li class="nav-item">
-                            <a class="nav-link active" aria-current="page" href="index.php">ホーム</a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link" href="settings.php">設定</a>
-                        </li>
-                    </ul>
-                    <ul class="navbar-nav ms-auto">
-                        <li class="nav-item">
-                            <span class="nav-link">
-                                <i class="bi bi-person-circle"></i> <?php echo htmlspecialchars($username); ?>
-                            </span>
-                        </li>
-                        <li class="nav-item">
-                            <a href="logout.php" class="btn btn-<?= $user_settings['theme'] === 'light' ? 'outline-dark' : 'outline-light' ?>">
-                                <i class="bi bi-box-arrow-right"></i> ログアウト
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </nav>
-
         <div class="row">
             <div class="col-md-6">
                 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -584,6 +595,7 @@ try {
                             <th>決済手段</th>
                             <th>備考</th>
                             <th>編集</th>
+                            <th>削除</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -641,6 +653,14 @@ try {
                                         編集
                                     </button>
                                 </td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-danger delete-transaction" 
+                                            data-bs-toggle="modal" 
+                                            data-bs-target="#deleteConfirmModal"
+                                            data-id="<?= $data['id'] ?>">
+                                        削除
+                                    </button>
+                                </td>
                             </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -649,7 +669,31 @@ try {
         </div>
     </div>
 
-    <!-- 編集用モーダル -->
+    <!-- 削除確認モーダル -->
+    <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">取引の削除</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>この取引を削除してもよろしいですか？</p>
+                    <p class="text-danger">この操作は取り消せません。</p>
+                </div>
+                <div class="modal-footer">
+                    <form method="post">
+                        <input type="hidden" name="action" value="delete_transaction">
+                        <input type="hidden" name="transaction_id" id="delete_transaction_id">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                        <button type="submit" class="btn btn-danger">削除</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 編集モーダル -->
     <div class="modal fade" id="editTransactionModal" tabindex="-1" aria-labelledby="editTransactionModalLabel" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -870,6 +914,20 @@ try {
                 if (e.target.classList.contains('edit-item-price')) {
                     calculateEditTotal();
                 }
+            });
+
+            // 削除確認モーダルを表示する関数
+            function deleteTransaction(transactionId) {
+                document.getElementById('delete_transaction_id').value = transactionId;
+                new bootstrap.Modal(document.getElementById('deleteConfirmModal')).show();
+            }
+
+            // 削除ボタンのクリックイベント
+            document.querySelectorAll('.delete-transaction').forEach(button => {
+                button.addEventListener('click', function() {
+                    const id = this.dataset.id;
+                    deleteTransaction(id);
+                });
             });
 
             // 編集ボタンのクリックイベント
