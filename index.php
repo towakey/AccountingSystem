@@ -213,6 +213,8 @@ if (isset($_POST['action'])) {
                 
                 $pdo->commit();
                 $_SESSION['alert'] = ['type' => 'success', 'message' => '取引を削除しました。'];
+                header('Location: ' . $_SERVER['PHP_SELF']);
+                exit;
             } catch (PDOException $e) {
                 $pdo->rollBack();
                 $_SESSION['alert'] = ['type' => 'danger', 'message' => 'エラーが発生しました: ' . $e->getMessage()];
@@ -239,8 +241,12 @@ $current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 $offset = ($current_page - 1) * $items_per_page;
 
 // 取引データの総数を取得
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM kakeibo_data WHERE user_id = ?");
-$stmt->execute([$user_id]);
+$selected_month = isset($_GET['month']) ? $_GET['month'] : date('Y-m');
+$month_start = $selected_month . '-01';
+$month_end = date('Y-m-t', strtotime($month_start));
+
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM kakeibo_data WHERE user_id = ? AND date BETWEEN ? AND ?");
+$stmt->execute([$user_id, $month_start, $month_end]);
 $total_items = $stmt->fetchColumn();
 $total_pages = ceil($total_items / $items_per_page);
 
@@ -251,11 +257,11 @@ $stmt = $pdo->prepare("
         p.name as payment_method_name
     FROM kakeibo_data k
     LEFT JOIN payment_methods p ON k.payment_method_id = p.id
-    WHERE k.user_id = ? 
+    WHERE k.user_id = ? AND k.date BETWEEN ? AND ?
     ORDER BY k.date DESC, k.id DESC 
     LIMIT ? OFFSET ?
 ");
-$stmt->execute([$user_id, $items_per_page, $offset]);
+$stmt->execute([$user_id, $month_start, $month_end, $items_per_page, $offset]);
 $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // 各取引の項目を取得
@@ -289,6 +295,53 @@ try {
 } catch (PDOException $e) {
     $products = [];
 }
+
+// 選択された月の収支合計を計算
+$selected_month = isset($_GET['month']) ? $_GET['month'] : date('Y-m');
+$month_start = $selected_month . '-01';
+$month_end = date('Y-m-t', strtotime($month_start));
+
+// 収入の合計を取得
+$stmt = $pdo->prepare("
+    SELECT COALESCE(SUM(price), 0) as total
+    FROM kakeibo_data 
+    WHERE user_id = ? 
+    AND date BETWEEN ? AND ?
+    AND transaction_type = 'income'
+");
+$stmt->execute([$user_id, $month_start, $month_end]);
+$total_income = $stmt->fetchColumn();
+
+// 支出の合計を取得
+$stmt = $pdo->prepare("
+    SELECT COALESCE(SUM(price), 0) as total
+    FROM kakeibo_data 
+    WHERE user_id = ? 
+    AND date BETWEEN ? AND ?
+    AND transaction_type = 'expense'
+");
+$stmt->execute([$user_id, $month_start, $month_end]);
+$total_expense = $stmt->fetchColumn();
+
+// 収支の差額を計算
+$balance = $total_income - $total_expense;
+
+// カード別集計を取得
+$stmt = $pdo->prepare("
+    SELECT 
+        p.name as payment_method,
+        SUM(k.price) as total
+    FROM kakeibo_data k
+    JOIN payment_methods p ON k.payment_method_id = p.id
+    WHERE k.user_id = ? 
+    AND k.date BETWEEN ? AND ?
+    AND k.transaction_type = 'expense'
+    GROUP BY p.name
+    ORDER BY total DESC
+");
+$stmt->execute([$user_id, $month_start, $month_end]);
+$payment_totals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 ?>
 
 <!DOCTYPE html>
@@ -526,76 +579,72 @@ try {
                         <h2 class="card-title h5 mb-0">今月の収支</h2>
                     </div>
                     <div class="card-body">
-                        <?php
-                        // 今月の収支を計算
-                        $current_month = date('Y-m');
-                        $monthly_income = 0;
-                        $monthly_expense = 0;
-                        $daily_data = [];
-                        
-                        // 今月の日付範囲を取得
-                        $start_date = $current_month . '-01';
-                        $end_date = date('Y-m-t'); // 月末日
-                        
-                        // 日々のデータを初期化
-                        $current = new DateTime($start_date);
-                        $end = new DateTime($end_date);
-                        while ($current <= $end) {
-                            $daily_data[$current->format('Y-m-d')] = [
-                                'income' => 0,
-                                'expense' => 0
-                            ];
-                            $current->modify('+1 day');
-                        }
-
-                        foreach ($transactions as $data) {
-                            if (substr($data['date'], 0, 7) === $current_month) {
-                                if ($data['transaction_type'] === 'income') {
-                                    $monthly_income += $data['price'];
-                                    $daily_data[$data['date']]['income'] += $data['price'];
-                                } else {
-                                    $monthly_expense += $data['price'];
-                                    $daily_data[$data['date']]['expense'] += $data['price'];
-                                }
-                            }
-                        }
-                        $monthly_balance = $monthly_income - $monthly_expense;
-                        ?>
-                        <div class="row text-center mb-4">
-                            <div class="col-4">
-                                <h5 class="data-header">収入</h5>
-                                <p class="h4 income-amount"><?= number_format($monthly_income) ?>円</p>
-                            </div>
-                            <div class="col-4">
-                                <h5 class="data-header">支出</h5>
-                                <p class="h4 expense-amount"><?= number_format($monthly_expense) ?>円</p>
-                            </div>
-                            <div class="col-4">
-                                <h5 class="data-header">収支</h5>
-                                <p class="h4 balance-amount <?= $monthly_balance >= 0 ? 'text-success' : 'text-danger' ?>"><?= number_format($monthly_balance) ?>円</p>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="chart-container">
-                                    <canvas id="pieChart"></canvas>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-body text-center">
+                                        <h6 class="card-subtitle mb-2 text-muted">収入</h6>
+                                        <p class="card-text text-success h4">
+                                            +<?php echo number_format($total_income); ?>円
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="col-md-6">
-                                <div class="chart-container">
-                                    <canvas id="barChart"></canvas>
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-body text-center">
+                                        <h6 class="card-subtitle mb-2 text-muted">支出</h6>
+                                        <p class="card-text text-danger h4">
+                                            -<?php echo number_format($total_expense); ?>円
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-body text-center">
+                                        <h6 class="card-subtitle mb-2 text-muted">収支</h6>
+                                        <p class="card-text h4 <?php echo $balance >= 0 ? 'text-success' : 'text-danger'; ?>">
+                                            <?php echo ($balance >= 0 ? '+' : '-') . number_format(abs($balance)); ?>円
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
+                        <?php if (!empty($payment_totals)): ?>
+                        <div class="mt-4">
+                            <h6 class="mb-3">決済方法別支出</h6>
+                            <?php foreach ($payment_totals as $payment): ?>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span><?php echo htmlspecialchars($payment['payment_method']); ?></span>
+                                <span class="text-danger">-<?php echo number_format($payment['total']); ?>円</span>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="card mt-4">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 <h2 class="card-title h5 mb-0">取引履歴</h2>
+                <div class="d-flex gap-2 align-items-center">
+                    <button class="btn btn-outline-secondary btn-sm" onclick="changeMonth(-1)">
+                        <i class="bi bi-chevron-left"></i>
+                    </button>
+                    <span id="currentMonth" class="fw-bold">
+                        <?php
+                        $selected_month = isset($_GET['month']) ? $_GET['month'] : date('Y-m');
+                        echo date('Y年n月', strtotime($selected_month));
+                        ?>
+                    </span>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="changeMonth(1)">
+                        <i class="bi bi-chevron-right"></i>
+                    </button>
+                </div>
             </div>
             <div class="table-responsive">
                 <table class="table table-striped table-hover mb-0">
@@ -688,7 +737,7 @@ try {
             <ul class="pagination justify-content-center">
                 <?php if ($current_page > 1): ?>
                     <li class="page-item">
-                        <a class="page-link" href="?page=<?php echo $current_page - 1; ?>" aria-label="前">
+                        <a class="page-link" href="?page=<?php echo $current_page - 1; ?>&month=<?php echo $selected_month; ?>" aria-label="前">
                             <span aria-hidden="true">&laquo;</span>
                         </a>
                     </li>
@@ -696,13 +745,13 @@ try {
                 
                 <?php for ($i = 1; $i <= $total_pages; $i++): ?>
                     <li class="page-item <?php echo $i === $current_page ? 'active' : ''; ?>">
-                        <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                        <a class="page-link" href="?page=<?php echo $i; ?>&month=<?php echo $selected_month; ?>"><?php echo $i; ?></a>
                     </li>
                 <?php endfor; ?>
                 
                 <?php if ($current_page < $total_pages): ?>
                     <li class="page-item">
-                        <a class="page-link" href="?page=<?php echo $current_page + 1; ?>" aria-label="次">
+                        <a class="page-link" href="?page=<?php echo $current_page + 1; ?>&month=<?php echo $selected_month; ?>" aria-label="次">
                             <span aria-hidden="true">&raquo;</span>
                         </a>
                     </li>
@@ -816,6 +865,42 @@ try {
                 backdrop: 'static',
                 keyboard: false
             });
+
+            // 削除モーダルの初期化と処理
+            const deleteModal = document.getElementById('deleteConfirmModal');
+            const deleteModalBS = new bootstrap.Modal(deleteModal);
+            const deleteTransactionIdInput = document.getElementById('delete_transaction_id');
+
+            // 削除ボタンのイベントリスナー
+            document.querySelectorAll('.delete-transaction').forEach(button => {
+                button.addEventListener('click', function() {
+                    const transactionId = this.dataset.id;
+                    if (deleteTransactionIdInput) {
+                        deleteTransactionIdInput.value = transactionId;
+                    }
+                });
+            });
+
+            // 削除フォームの送信処理
+            const deleteForm = deleteModal.querySelector('form');
+            if (deleteForm) {
+                deleteForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    fetch(window.location.href, {
+                        method: 'POST',
+                        body: new FormData(this)
+                    })
+                    .then(response => response.text())
+                    .then(() => {
+                        deleteModalBS.hide();
+                        window.location.reload();
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('削除中にエラーが発生しました。');
+                    });
+                });
+            }
 
             // フォームの初期化
             const editForm = document.getElementById('editTransactionForm');
@@ -1107,3 +1192,21 @@ try {
 </div>
 </body>
 </html>
+
+<script>
+    window.changeMonth = function(diff) {
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentMonth = urlParams.get('month') || '<?php echo date('Y-m'); ?>';
+        
+        // 月を変更
+        let date = new Date(currentMonth + '-01');
+        date.setMonth(date.getMonth() + diff);
+        
+        // 新しい月を YYYY-MM 形式で取得
+        const newMonth = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+        
+        // URLを更新して画面をリロード
+        urlParams.set('month', newMonth);
+        window.location.href = window.location.pathname + '?' + urlParams.toString();
+    };
+</script>
