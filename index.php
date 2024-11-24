@@ -149,9 +149,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'edit') {
 
         // 項目の合計金額を計算
         $total_price = 0;
-        if (isset($_POST['edit_item_prices'])) {
-            foreach ($_POST['edit_item_prices'] as $price) {
-                $total_price += (float)$price;
+        if (isset($_POST['edit_items']['price'])) {
+            foreach ($_POST['edit_items']['price'] as $price) {
+                if (!empty($price)) {
+                    $total_price += intval($price);
+                }
             }
         }
 
@@ -167,12 +169,12 @@ if (isset($_POST['action']) && $_POST['action'] === 'edit') {
             $stmt->execute([$transaction_id]);
 
             // 新しい項目を追加
-            if (isset($_POST['edit_item_names']) && isset($_POST['edit_item_prices'])) {
+            if (isset($_POST['edit_items']['name']) && isset($_POST['edit_items']['price'])) {
                 $stmt = $pdo->prepare("INSERT INTO transaction_items (transaction_id, product_name, price) VALUES (?, ?, ?)");
                 
-                for ($i = 0; $i < count($_POST['edit_item_names']); $i++) {
-                    $item_name = $_POST['edit_item_names'][$i];
-                    $item_price = $_POST['edit_item_prices'][$i];
+                for ($i = 0; $i < count($_POST['edit_items']['name']); $i++) {
+                    $item_name = $_POST['edit_items']['name'][$i];
+                    $item_price = $_POST['edit_items']['price'][$i];
                     
                     if (!empty($item_name) && !empty($item_price)) {
                         $stmt->execute([$transaction_id, $item_name, $item_price]);
@@ -223,40 +225,52 @@ if (isset($_POST['action'])) {
     }
 }
 
-// 取引履歴の取得
-try {
-    // まず取引データを取得
-    $stmt = $pdo->prepare("
-        SELECT 
-            k.*,
-            p.name as payment_method_name
-        FROM kakeibo_data k
-        LEFT JOIN payment_methods p ON k.payment_method_id = p.id
-        WHERE k.user_id = ?
-        ORDER BY k.date DESC, k.id DESC
-        LIMIT 100
-    ");
-    $stmt->execute([$_SESSION['user_id']]);
-    $transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// ページネーションの設定を取得
+$stmt = $pdo->prepare("
+    SELECT value 
+    FROM config 
+    WHERE user_id = ? AND key = 'items_per_page'
+");
+$stmt->execute([$user_id]);
+$items_per_page = $stmt->fetchColumn() ?: 10; // デフォルトは10件
 
-    // 各取引の項目を取得
-    $items_stmt = $pdo->prepare("
-        SELECT id, product_name, price
-        FROM transaction_items
-        WHERE transaction_id = ?
-    ");
+// 現在のページを取得
+$current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$offset = ($current_page - 1) * $items_per_page;
 
-    foreach ($transactions as &$transaction) {
-        $items_stmt->execute([$transaction['id']]);
-        $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
-        $transaction['items_json'] = json_encode($items);
-    }
-    unset($transaction); // 参照を解除
+// 取引データの総数を取得
+$stmt = $pdo->prepare("SELECT COUNT(*) FROM kakeibo_data WHERE user_id = ?");
+$stmt->execute([$user_id]);
+$total_items = $stmt->fetchColumn();
+$total_pages = ceil($total_items / $items_per_page);
 
-} catch (PDOException $e) {
-    echo "<div class='alert alert-danger'>データの取得に失敗しました: " . $e->getMessage() . "</div>";
-    $transactions = [];
+// 取引データを取得
+$stmt = $pdo->prepare("
+    SELECT 
+        k.*,
+        p.name as payment_method_name
+    FROM kakeibo_data k
+    LEFT JOIN payment_methods p ON k.payment_method_id = p.id
+    WHERE k.user_id = ? 
+    ORDER BY k.date DESC, k.id DESC 
+    LIMIT ? OFFSET ?
+");
+$stmt->execute([$user_id, $items_per_page, $offset]);
+$transactions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// 各取引の項目を取得
+$items_stmt = $pdo->prepare("
+    SELECT id, product_name, price
+    FROM transaction_items
+    WHERE transaction_id = ?
+");
+
+foreach ($transactions as &$transaction) {
+    $items_stmt->execute([$transaction['id']]);
+    $items = $items_stmt->fetchAll(PDO::FETCH_ASSOC);
+    $transaction['items_json'] = json_encode($items);
 }
+unset($transaction); // 参照を解除
 
 // 店舗の履歴を取得
 try {
@@ -667,6 +681,35 @@ try {
                 </table>
             </div>
         </div>
+
+        <!-- ページネーション -->
+        <?php if ($total_pages > 1): ?>
+        <nav aria-label="ページナビゲーション" class="mt-4">
+            <ul class="pagination justify-content-center">
+                <?php if ($current_page > 1): ?>
+                    <li class="page-item">
+                        <a class="page-link" href="?page=<?php echo $current_page - 1; ?>" aria-label="前">
+                            <span aria-hidden="true">&laquo;</span>
+                        </a>
+                    </li>
+                <?php endif; ?>
+                
+                <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                    <li class="page-item <?php echo $i === $current_page ? 'active' : ''; ?>">
+                        <a class="page-link" href="?page=<?php echo $i; ?>"><?php echo $i; ?></a>
+                    </li>
+                <?php endfor; ?>
+                
+                <?php if ($current_page < $total_pages): ?>
+                    <li class="page-item">
+                        <a class="page-link" href="?page=<?php echo $current_page + 1; ?>" aria-label="次">
+                            <span aria-hidden="true">&raquo;</span>
+                        </a>
+                    </li>
+                <?php endif; ?>
+            </ul>
+        </nav>
+        <?php endif; ?>
     </div>
 
     <!-- 削除確認モーダル -->
@@ -694,7 +737,7 @@ try {
     </div>
 
     <!-- 編集モーダル -->
-    <div class="modal fade" id="editTransactionModal" tabindex="-1" aria-labelledby="editTransactionModalLabel" aria-hidden="true">
+    <div class="modal fade" id="editTransactionModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="editTransactionModalLabel" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
@@ -727,11 +770,6 @@ try {
                         </div>
 
                         <div class="mb-3">
-                            <label for="edit_price" class="form-label">合計金額</label>
-                            <input type="number" class="form-control" id="edit_price" name="price" readonly>
-                        </div>
-
-                        <div class="mb-3">
                             <label for="edit_payment_method" class="form-label">支払方法</label>
                             <select class="form-select" id="edit_payment_method" name="payment_method_id" required>
                                 <?php foreach ($payment_methods as $method): ?>
@@ -746,13 +784,18 @@ try {
                                 <!-- 項目がここに動的に追加されます -->
                             </div>
                             <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="addEditItemBtn">
-                                項目を追加
+                                <i class="bi bi-plus"></i> 項目を追加
                             </button>
                         </div>
 
                         <div class="mb-3">
+                            <label for="edit_price" class="form-label">合計金額</label>
+                            <input type="number" class="form-control" id="edit_price" name="price" readonly>
+                        </div>
+
+                        <div class="mb-3">
                             <label for="edit_note" class="form-label">メモ</label>
-                            <textarea class="form-control" id="edit_note" name="note" rows="3"></textarea>
+                            <textarea class="form-control" id="edit_note" name="note" rows="2"></textarea>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -766,337 +809,211 @@ try {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // アラートの自動非表示
         document.addEventListener('DOMContentLoaded', function() {
-            const alert = document.getElementById('autoAlert');
-            if (alert) {
-                setTimeout(function() {
-                    const bsAlert = new bootstrap.Alert(alert);
-                    bsAlert.close();
-                }, 3000);
-            }
+            // 編集モーダルの初期化
+            const editModal = document.getElementById('editTransactionModal');
+            const editModalBS = new bootstrap.Modal(editModal, {
+                backdrop: 'static',
+                keyboard: false
+            });
 
-            // 項目の追加と削除の管理
-            const itemsContainer = document.getElementById('items-container');
-            const addItemButton = document.getElementById('add-item');
-            const totalPriceInput = document.getElementById('price');
-            let itemCount = 1;
+            // フォームの初期化
+            const editForm = document.getElementById('editTransactionForm');
+            const editItemsContainer = document.getElementById('editItemsContainer');
+            const editPrice = document.getElementById('edit_price');
+            const editPaymentMethod = document.getElementById('edit_payment_method');
+            const editDate = document.getElementById('edit_date');
 
             // 合計金額の計算
-            function calculateTotal() {
-                let total = 0;
-                document.querySelectorAll('.item-price').forEach(input => {
-                    const value = parseInt(input.value) || 0;
-                    total += value;
-                });
-                totalPriceInput.value = total;
+            function calculateEditTotal() {
+                if (!editItemsContainer || !editPrice) return;
+                
+                const priceInputs = editItemsContainer.querySelectorAll('.item-price');
+                const total = Array.from(priceInputs).reduce((sum, input) => {
+                    return sum + (parseFloat(input.value) || 0);
+                }, 0);
+                
+                editPrice.value = total;
             }
 
-            // 項目の追加
-            addItemButton.addEventListener('click', function() {
-                const newRow = document.createElement('div');
-                newRow.className = 'item-row mb-2';
-                newRow.innerHTML = `
-                    <div class="row">
-                        <div class="col-md-6">
-                            <input type="text" name="items[${itemCount}][name]" class="form-control item-name" list="product_list" placeholder="項目名">
-                        </div>
-                        <div class="col-md-4">
-                            <input type="number" name="items[${itemCount}][price]" class="form-control item-price" placeholder="金額">
-                        </div>
-                        <div class="col-md-2">
-                            <button type="button" class="btn btn-outline-danger btn-remove-item" style="display: none;">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                `;
-                itemsContainer.appendChild(newRow);
-                itemCount++;
-
-                // 最初の削除ボタンを表示
-                document.querySelector('.btn-remove-item').style.display = 'block';
-
-                // 新しい項目の金額入力欄にイベントリスナーを追加
-                newRow.querySelector('.item-price').addEventListener('input', calculateTotal);
-            });
-
-            // 項目の削除
-            itemsContainer.addEventListener('click', function(e) {
-                if (e.target.closest('.btn-remove-item')) {
-                    const row = e.target.closest('.item-row');
-                    row.remove();
-                    calculateTotal();
-
-                    // 項目が1つだけになった場合、削除ボタンを非表示
-                    const remainingItems = document.querySelectorAll('.item-row');
-                    if (remainingItems.length === 1) {
-                        remainingItems[0].querySelector('.btn-remove-item').style.display = 'none';
-                    }
-                }
-            });
-
-            // 既存の金額入力欄にイベントリスナーを追加
-            document.querySelectorAll('.item-price').forEach(input => {
-                input.addEventListener('input', calculateTotal);
-            });
-
-            // 合計金額の手動入力を許可
-            totalPriceInput.addEventListener('input', function() {
-                const items = document.querySelectorAll('.item-row');
-                if (items.length === 1 && !items[0].querySelector('.item-name').value) {
-                    // 項目が未入力の場合は手動入力を許可
-                    return;
-                }
-                // 項目が入力されている場合は自動計算を優先
-                calculateTotal();
-            });
-
-            // 編集モーダルの項目管理
-            const editItemsContainer = document.getElementById('editItemsContainer');
-            const addEditItemBtn = document.getElementById('addEditItemBtn');
-
-            // 項目を削除する関数をグローバルスコープで定義
-            window.removeEditItem = function(button) {
-                const row = button.closest('.edit-item-row');
-                if (row) {
-                    row.remove();
-                    calculateEditTotal();
-                }
-            };
-
-            // 項目行を作成する関数
+            // 項目行の作成
             function createEditItemRow(name = '', price = '', itemId = '') {
                 const row = document.createElement('div');
                 row.className = 'edit-item-row d-flex gap-2 mb-2';
                 
-                // ユニークなIDを生成
-                const uniqueId = 'item_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                const nameInput = document.createElement('input');
+                nameInput.type = 'text';
+                nameInput.className = 'form-control item-name';
+                nameInput.name = 'edit_items[name][]';
+                nameInput.value = name;
+                nameInput.placeholder = '項目名';
+                nameInput.required = true;
+                nameInput.setAttribute('list', 'product_list');
                 
-                row.innerHTML = `
-                    <input type="hidden" name="edit_item_ids[]" value="${itemId}">
-                    <div class="flex-grow-1">
-                        <label class="visually-hidden" for="${uniqueId}_name">商品名</label>
-                        <input type="text" class="form-control" id="${uniqueId}_name" name="edit_item_names[]" 
-                               placeholder="商品名" value="${name}" required>
-                    </div>
-                    <div>
-                        <label class="visually-hidden" for="${uniqueId}_price">価格</label>
-                        <input type="number" class="form-control edit-item-price" id="${uniqueId}_price" 
-                               name="edit_item_prices[]" placeholder="価格" value="${price}" required>
-                    </div>
-                    <button type="button" class="btn btn-outline-danger btn-sm" 
-                            onclick="window.removeEditItem(this)" 
-                            aria-label="この項目を削除">削除</button>
-                `;
+                const priceInput = document.createElement('input');
+                priceInput.type = 'number';
+                priceInput.className = 'form-control item-price';
+                priceInput.name = 'edit_items[price][]';
+                priceInput.value = price;
+                priceInput.placeholder = '価格';
+                priceInput.required = true;
+                priceInput.min = '0';
+                
+                if (itemId) {
+                    const idInput = document.createElement('input');
+                    idInput.type = 'hidden';
+                    idInput.name = 'edit_items[id][]';
+                    idInput.value = itemId;
+                    row.appendChild(idInput);
+                }
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.className = 'btn btn-outline-danger btn-remove-item';
+                removeBtn.innerHTML = '<i class="bi bi-trash"></i>';
+                
+                row.appendChild(nameInput);
+                row.appendChild(priceInput);
+                row.appendChild(removeBtn);
+                
+                // 価格入力時に合計を更新
+                priceInput.addEventListener('input', calculateEditTotal);
+                
                 return row;
             }
 
-            // 合計金額を計算する関数
-            function calculateEditTotal() {
-                const priceInputs = document.querySelectorAll('#editItemsContainer .edit-item-price');
-                let total = 0;
-                priceInputs.forEach(input => {
-                    const price = parseFloat(input.value) || 0;
-                    total += price;
-                });
-                document.getElementById('edit_price').value = total;
-            }
+            // フォームのリセット
+            function resetEditForm() {
+                if (!editForm || !editItemsContainer) return;
 
-            // 新しい項目を追加
-            addEditItemBtn.addEventListener('click', () => {
-                const row = createEditItemRow();
-                editItemsContainer.appendChild(row);
-            });
+                // フォームのリセット
+                editForm.reset();
 
-            // 項目価格の変更を監視
-            editItemsContainer.addEventListener('input', function(e) {
-                if (e.target.classList.contains('edit-item-price')) {
-                    calculateEditTotal();
+                // 項目のクリア
+                editItemsContainer.innerHTML = '';
+                const emptyRow = createEditItemRow();
+                editItemsContainer.appendChild(emptyRow);
+
+                // 日付を今日の日付に
+                if (editDate) {
+                    editDate.value = new Date().toISOString().split('T')[0];
                 }
-            });
 
-            // 削除確認モーダルを表示する関数
-            function deleteTransaction(transactionId) {
-                document.getElementById('delete_transaction_id').value = transactionId;
-                new bootstrap.Modal(document.getElementById('deleteConfirmModal')).show();
+                // 支払方法をリセット
+                if (editPaymentMethod) {
+                    editPaymentMethod.selectedIndex = 0;
+                }
+
+                // 合計金額をリセット
+                if (editPrice) {
+                    editPrice.value = '';
+                }
             }
 
-            // 削除ボタンのクリックイベント
-            document.querySelectorAll('.delete-transaction').forEach(button => {
-                button.addEventListener('click', function() {
-                    const id = this.dataset.id;
-                    deleteTransaction(id);
-                });
-            });
+            // モーダルイベントの設定
+            if (editModal) {
+                editModal.addEventListener('hidden.bs.modal', resetEditForm);
+                
+                // キャンセルボタンのクリックイベント
+                const cancelBtn = editModal.querySelector('.btn-secondary');
+                if (cancelBtn) {
+                    cancelBtn.addEventListener('click', () => editModalBS.hide());
+                }
+            }
 
             // 編集ボタンのクリックイベント
             document.querySelectorAll('.edit-transaction').forEach(button => {
                 button.addEventListener('click', function() {
-                    const id = this.dataset.id;
-                    const date = this.dataset.date;
-                    const type = this.dataset.type;
-                    const store = this.dataset.store;
-                    const price = this.dataset.price;
-                    const payment = this.dataset.payment;
-                    const note = this.dataset.note;
-                    let items = [];
+                    if (!editForm) return;
+
+                    const {id, date, type, store, price, payment, note = '', items = '[]'} = this.dataset;
+                    let itemsData = [];
 
                     try {
-                        const itemsData = this.dataset.items;
-                        
-                        if (itemsData && itemsData !== '[]') {
-                            items = JSON.parse(itemsData);
+                        if (items && items !== '[]') {
+                            itemsData = JSON.parse(items);
                         }
                     } catch (e) {
                         console.error('項目データの解析に失敗しました:', e);
-                        console.log('解析に失敗したデータ:', this.dataset.items);
-                        items = [];
+                        console.log('解析に失敗したデータ:', items);
                     }
 
                     // フォームの設定
                     document.getElementById('edit_transaction_id').value = id;
-                    document.getElementById('edit_date').value = date;
-                    document.getElementById('edit_store_name').value = store;
-                    document.getElementById('edit_price').value = price;
-                    document.getElementById('edit_payment_method').value = payment;
-                    document.getElementById('edit_note').value = note;
-
-                    if (type === 'income') {
-                        document.getElementById('edit_income').checked = true;
-                    } else {
-                        document.getElementById('edit_expense').checked = true;
-                    }
-
-                    // 項目の設定
-                    editItemsContainer.innerHTML = '';
-
-                    if (Array.isArray(items) && items.length > 0) {
-                        items.forEach(item => {
-                            if (item && typeof item === 'object') {
-                                const row = createEditItemRow(
-                                    item.product_name || '',  
-                                    item.price || '',
-                                    item.id || ''
-                                );
-                                editItemsContainer.appendChild(row);
-                            }
-                        });
-                    } else {
-                        editItemsContainer.appendChild(createEditItemRow());
-                    }
+                    if (editDate) editDate.value = date;
                     
-                    // 合計金額を再計算
-                    calculateEditTotal();
-                });
-            });
-
-            // モーダルフォームの機能
-            let modalItemCounter = 1;
-
-            // 項目追加ボタンのイベントリスナー
-            document.getElementById('modal_add_item').addEventListener('click', function() {
-                const container = document.getElementById('modal_items_container');
-                const newRow = document.createElement('div');
-                newRow.className = 'item-row mb-2';
-                newRow.innerHTML = `
-                    <div class="row">
-                        <div class="col-md-6">
-                            <input type="text" name="items[${modalItemCounter}][name]" class="form-control item-name" list="product_list" placeholder="項目名">
-                        </div>
-                        <div class="col-md-4">
-                            <input type="number" name="items[${modalItemCounter}][price]" class="form-control item-price" placeholder="金額">
-                        </div>
-                        <div class="col-md-2">
-                            <button type="button" class="btn btn-outline-danger btn-remove-item">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </div>
-                    </div>
-                `;
-                container.appendChild(newRow);
-                modalItemCounter++;
-
-                // 最初の項目の削除ボタンを表示
-                const firstRemoveButton = document.querySelector('#modal_items_container .btn-remove-item');
-                if (firstRemoveButton) {
-                    firstRemoveButton.style.display = 'block';
-                }
-
-                // 新しい項目の価格入力にイベントリスナーを追加
-                const newPriceInput = newRow.querySelector('.item-price');
-                newPriceInput.addEventListener('input', calculateModalTotal);
-            });
-
-            // 項目削除ボタンのイベントリスナー（動的に追加された要素用）
-            document.getElementById('modal_items_container').addEventListener('click', function(e) {
-                if (e.target.closest('.btn-remove-item')) {
-                    const row = e.target.closest('.item-row');
-                    row.remove();
-                    calculateModalTotal();
-
-                    // 項目が1つだけになった場合、削除ボタンを非表示
-                    const rows = document.querySelectorAll('#modal_items_container .item-row');
-                    if (rows.length === 1) {
-                        const firstRemoveButton = document.querySelector('#modal_items_container .btn-remove-item');
-                        if (firstRemoveButton) {
-                            firstRemoveButton.style.display = 'none';
+                    // 取引種類の設定
+                    const incomeRadio = document.getElementById('edit_income');
+                    const expenseRadio = document.getElementById('edit_expense');
+                    if (incomeRadio && expenseRadio) {
+                        if (type === 'income') {
+                            incomeRadio.checked = true;
+                        } else {
+                            expenseRadio.checked = true;
                         }
                     }
-                }
+                    
+                    // その他のフィールドの設定
+                    const storeInput = document.getElementById('edit_store_name');
+                    if (storeInput) storeInput.value = store;
+                    
+                    if (editPaymentMethod) editPaymentMethod.value = payment;
+                    
+                    const noteInput = document.getElementById('edit_note');
+                    if (noteInput) noteInput.value = note;
+                    
+                    if (editPrice) editPrice.value = price;
+
+                    // 項目の設定
+                    if (editItemsContainer) {
+                        editItemsContainer.innerHTML = '';
+                        if (itemsData.length > 0) {
+                            itemsData.forEach(item => {
+                                const row = createEditItemRow(item.product_name, item.price, item.id);
+                                editItemsContainer.appendChild(row);
+                            });
+                        } else {
+                            const row = createEditItemRow('', price);
+                            editItemsContainer.appendChild(row);
+                        }
+                    }
+
+                    // モーダルを表示
+                    editModalBS.show();
+                });
             });
 
-            // モーダルでの合計金額計算
-            function calculateModalTotal() {
-                const priceInputs = document.querySelectorAll('#modal_items_container .item-price');
-                let total = 0;
-                priceInputs.forEach(input => {
-                    const price = parseFloat(input.value) || 0;
-                    total += price;
+            // 項目の追加ボタン
+            const addEditItemBtn = document.getElementById('addEditItemBtn');
+            if (addEditItemBtn && editItemsContainer) {
+                addEditItemBtn.addEventListener('click', () => {
+                    const row = createEditItemRow();
+                    editItemsContainer.appendChild(row);
+                    calculateEditTotal();
                 });
-                document.getElementById('modal_price').value = total;
             }
 
-            // モーダルが開かれたときの初期化
-            const addTransactionModal = document.getElementById('addTransactionModal');
-            addTransactionModal.addEventListener('show.bs.modal', function() {
-                // フォームをリセット
-                const form = this.querySelector('form');
-                form.reset();
-                
-                // 日付を今日の日付にセット
-                document.getElementById('modal_date').value = new Date().toISOString().split('T')[0];
-                
-                // 項目をクリア（最初の1つだけ残す）
-                const container = document.getElementById('modal_items_container');
-                container.innerHTML = `
-                    <div class="item-row mb-2">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <input type="text" name="items[0][name]" class="form-control item-name" list="product_list" placeholder="項目名">
-                            </div>
-                            <div class="col-md-4">
-                                <input type="number" name="items[0][price]" class="form-control item-price" placeholder="金額">
-                            </div>
-                            <div class="col-md-2">
-                                <button type="button" class="btn btn-outline-danger btn-remove-item" style="display: none;">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                modalItemCounter = 1;
+            // 項目の削除と価格変更イベント
+            if (editItemsContainer) {
+                // 削除ボタンのクリックイベント
+                editItemsContainer.addEventListener('click', e => {
+                    const removeBtn = e.target.closest('.btn-remove-item');
+                    if (removeBtn) {
+                        const row = removeBtn.closest('.edit-item-row');
+                        if (row) {
+                            row.remove();
+                            calculateEditTotal();
+                        }
+                    }
+                });
 
-                // 最初の価格入力にイベントリスナーを追加
-                const firstPriceInput = container.querySelector('.item-price');
-                firstPriceInput.addEventListener('input', calculateModalTotal);
-            });
-
-            // 既存の項目の価格入力にイベントリスナーを追加
-            document.querySelectorAll('#modal_items_container .item-price').forEach(input => {
-                input.addEventListener('input', calculateModalTotal);
-            });
+                // 価格入力イベント
+                editItemsContainer.addEventListener('input', e => {
+                    if (e.target.matches('.item-price')) {
+                        calculateEditTotal();
+                    }
+                });
+            }
         });
     </script>
     <!-- 取引追加モーダル -->

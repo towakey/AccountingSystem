@@ -18,8 +18,13 @@ function isSystemInitialized() {
 function createTables($db) {
     // configテーブル
     $db->exec("CREATE TABLE IF NOT EXISTS config (
-        key TEXT PRIMARY KEY,
-        value TEXT
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        value TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        UNIQUE(user_id, key)
     )");
 
     // ユーザー設定テーブルの作成
@@ -211,13 +216,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   )");
 
         // 設定の保存
-        $stmt = $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)");
-        $stmt->execute(['company_name', $_POST['company_name']]);
-        $stmt->execute(['fiscal_year_start', $_POST['fiscal_year_start']]);
-        $stmt->execute(['currency', $_POST['currency']]);
+        $stmt = $db->prepare("INSERT OR REPLACE INTO config (user_id, key, value) VALUES (?, ?, ?)");
+        $stmt->execute([$admin_id, 'company_name', $_POST['company_name']]);
+        $stmt->execute([$admin_id, 'fiscal_year_start', $_POST['fiscal_year_start']]);
+        $stmt->execute([$admin_id, 'currency', $_POST['currency']]);
+        $stmt->execute([$admin_id, 'items_per_page', $_POST['items_per_page']]);
         
         // 初期化完了フラグを設定
-        $stmt->execute(['initialized', 'true']);
+        $stmt->execute([$admin_id, 'initialized', 'true']);
         
         // トランザクションをコミット
         $db->commit();
@@ -283,6 +289,11 @@ if (isSystemInitialized()) {
                                     <option value="USD">米ドル (USD)</option>
                                     <option value="EUR">ユーロ (EUR)</option>
                                 </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="items_per_page" class="form-label">1ページあたりのアイテム数</label>
+                                <input type="number" class="form-control" id="items_per_page" name="items_per_page" required>
                             </div>
                             
                             <div class="text-center">

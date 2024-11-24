@@ -45,11 +45,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     
                     // 決済手段のIDを取得
                     $payment_method_id = null;
+                    $payment_method_found = false;
                     foreach ($payment_methods as $method) {
                         if (strpos(strtolower($method['name']), strtolower($row['payment_method'])) !== false) {
                             $payment_method_id = $method['id'];
+                            $payment_method_found = true;
                             break;
                         }
+                    }
+
+                    // 決済手段が見つからない場合は新規登録
+                    if (!$payment_method_found) {
+                        $payment_method_stmt = $pdo->prepare("
+                            INSERT INTO payment_methods (user_id, name, type, is_default) 
+                            VALUES (?, ?, 'cash', 0)
+                        ");
+                        $payment_method_stmt->execute([$_SESSION['user_id'], $row['payment_method']]);
+                        $payment_method_id = $pdo->lastInsertId();
+                        
+                        // 新しい決済手段を配列に追加
+                        $payment_methods[] = [
+                            'id' => $payment_method_id,
+                            'name' => $row['payment_method']
+                        ];
                     }
 
                     // データを挿入
@@ -139,6 +157,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </ul>
                                 <div class="form-text">
                                     JSONファイルの payment_method は上記のいずれかに一致するようにしてください。
+                                    一致しない決済手段は「現金払い」として新規登録されます。
+                                    必要に応じて、設定画面で決済手段の種類を変更してください。
                                 </div>
                             </div>
                             <div class="d-grid">
