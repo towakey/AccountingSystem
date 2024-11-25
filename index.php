@@ -176,6 +176,7 @@ foreach ($transactions as &$transaction) {
 }
 unset($transaction); // 参照を解除
 ?>
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -398,76 +399,41 @@ unset($transaction); // 参照を解除
                 </div>
             </div>
             <div class="table-responsive">
-                <table class="table table-striped table-hover mb-0">
+                <table class="table table-hover">
                     <thead>
                         <tr>
                             <th>日付</th>
-                            <th>種別</th>
+                            <th>取引種別</th>
                             <th>取引先</th>
-                            <th>項目</th>
                             <th class="text-end">金額</th>
-                            <th>決済手段</th>
+                            <th>決済方法</th>
                             <th>備考</th>
-                            <th>編集</th>
-                            <th>削除</th>
+                            <th colspan="2" class="text-center">操作</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($transactions as $data): ?>
                             <tr>
-                                <td><?= htmlspecialchars($data['date']) ?></td>
+                                <td><?= date('Y/m/d', strtotime($data['date'])) ?></td>
                                 <td>
                                     <?php if ($data['transaction_type'] === 'income'): ?>
-                                        <span class="badge bg-success">入金</span>
+                                        <span class="badge bg-success">収入</span>
                                     <?php else: ?>
-                                        <span class="badge bg-danger">出金</span>
+                                        <span class="badge bg-danger">支出</span>
                                     <?php endif; ?>
                                 </td>
                                 <td><?= htmlspecialchars($data['store_name']) ?></td>
-                                <td>
-                                    <?php if ($data['items_json'] && $data['items_json'] !== '[]'): ?>
-                                        <?php 
-                                        $items = json_decode($data['items_json'], true);
-                                        if ($items): 
-                                            echo '<ul class="list-unstyled mb-0">';
-                                            foreach ($items as $item) {
-                                                if (isset($item['product_name']) && isset($item['price'])) {
-                                                    echo '<li>' . htmlspecialchars($item['product_name']) . ' (' . number_format($item['price']) . '円)</li>';
-                                                }
-                                            }
-                                            echo '</ul>';
-                                        endif;
-                                        ?>
-                                    <?php else: ?>
-                                        -
-                                    <?php endif; ?>
-                                </td>
-                                <td class="text-end <?= $data['transaction_type'] === 'income' ? 'text-success' : 'text-danger' ?>">
+                                <td class="text-end">
                                     <?= $data['transaction_type'] === 'income' ? '+' : '-' ?><?= number_format($data['price']) ?>円
                                 </td>
                                 <td><?= htmlspecialchars($data['payment_method_name']) ?></td>
                                 <td><?= $data['note'] ? htmlspecialchars($data['note']) : '-' ?></td>
-                                <td>
-                                    <button type="button" class="btn btn-sm btn-primary edit-transaction" 
-                                            data-bs-toggle="modal" 
-                                            data-bs-target="#editTransactionModal"
-                                            data-id="<?= $data['id'] ?>"
-                                            data-date="<?= $data['date'] ?>"
-                                            data-type="<?= $data['transaction_type'] ?>"
-                                            data-store="<?= htmlspecialchars($data['store_name']) ?>"
-                                            data-price="<?= $data['price'] ?>"
-                                            data-payment="<?= $data['payment_method_id'] ?>"
-                                            data-note="<?= htmlspecialchars($data['note']) ?>"
-                                            data-items='<?= htmlspecialchars($data['items_json']) ?>'>
-                                        編集
+                                <td class="text-end">
+                                    <button type="button" class="btn btn-sm btn-primary" onclick="editTransaction(<?php echo $data['id']; ?>)">
+                                        <i class="bi bi-pencil"></i> 編集
                                     </button>
-                                </td>
-                                <td>
-                                    <button type="button" class="btn btn-sm btn-danger delete-transaction" 
-                                            data-bs-toggle="modal" 
-                                            data-bs-target="#deleteConfirmModal"
-                                            data-id="<?= $data['id'] ?>">
-                                        削除
+                                    <button type="button" class="btn btn-sm btn-danger" onclick="deleteTransaction(<?php echo $data['id']; ?>)">
+                                        <i class="bi bi-trash"></i> 削除
                                     </button>
                                 </td>
                             </tr>
@@ -503,72 +469,76 @@ unset($transaction); // 参照を解除
     </div>
 
     <!-- 編集モーダル -->
-    <div class="modal fade" id="editTransactionModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="editTransactionModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
+    <div class="modal fade" id="editTransactionModal" tabindex="-1" aria-labelledby="editTransactionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="editTransactionModalLabel">取引を編集</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <form id="editTransactionForm" method="POST">
-                    <div class="modal-body">
-                        <input type="hidden" name="action" value="edit">
-                        <input type="hidden" name="transaction_id" id="edit_transaction_id">
-                        
+                <div class="modal-body">
+                    <form id="editTransactionForm" onsubmit="return false;">
+                        <input type="hidden" name="id">
                         <div class="mb-3">
                             <label for="edit_date" class="form-label">日付</label>
-                            <input type="date" class="form-control" id="edit_date" name="date" required>
+                            <input type="date" name="date" id="edit_date" class="form-control" required>
                         </div>
-
                         <div class="mb-3">
-                            <div class="btn-group w-100" role="group" aria-label="取引種類">
-                                <input type="radio" class="btn-check" name="edit_transaction_type" id="edit_expense" value="expense">
-                                <label class="btn btn-outline-danger" for="edit_expense">支出</label>
-                                
-                                <input type="radio" class="btn-check" name="edit_transaction_type" id="edit_income" value="income">
-                                <label class="btn btn-outline-success" for="edit_income">収入</label>
+                            <label class="form-label">取引種別</label>
+                            <div class="btn-group w-100" role="group">
+                                <input type="radio" class="btn-check" name="transaction_type" id="edit_transaction_type_expense" value="expense">
+                                <label class="btn btn-outline-danger" for="edit_transaction_type_expense">
+                                    <i class="bi bi-dash-circle"></i> 出金
+                                </label>
+                                <input type="radio" class="btn-check" name="transaction_type" id="edit_transaction_type_income" value="income">
+                                <label class="btn btn-outline-success" for="edit_transaction_type_income">
+                                    <i class="bi bi-plus-circle"></i> 入金
+                                </label>
                             </div>
                         </div>
-
                         <div class="mb-3">
-                            <label for="edit_store_name" class="form-label">店舗名</label>
-                            <input type="text" class="form-control" id="edit_store_name" name="store_name" required>
+                            <label for="edit_store_name" class="form-label">取引先</label>
+                            <input type="text" name="store_name" id="edit_store_name" class="form-control" list="stores" required>
                         </div>
-
                         <div class="mb-3">
-                            <label for="edit_payment_method" class="form-label">支払方法</label>
-                            <select class="form-select" id="edit_payment_method" name="payment_method_id" required>
+                            <label for="edit_payment_method" class="form-label">決済方法</label>
+                            <select name="payment_method_id" id="edit_payment_method" class="form-select" required>
                                 <?php foreach ($payment_methods as $method): ?>
-                                    <option value="<?= $method['id'] ?>"><?= htmlspecialchars($method['name']) ?></option>
+                                    <option value="<?= $method['id'] ?>" <?= $method['is_default'] ? 'selected' : '' ?>>
+                                        <?= htmlspecialchars($method['name']) ?>
+                                        <?php if ($method['withdrawal_day']): ?>
+                                            (引落: <?= $method['withdrawal_day'] ?>日)
+                                        <?php endif; ?>
+                                    </option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
-
                         <div class="mb-3">
-                            <label class="form-label">項目</label>
-                            <div id="editItemsContainer" role="group" aria-label="取引項目リスト">
-                                <!-- 項目がここに動的に追加されます -->
+                            <label class="form-label">取引項目</label>
+                            <div id="edit_items_container">
+                                <!-- 取引項目がここに動的に追加されます -->
                             </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm mt-2" id="addEditItemBtn">
-                                <i class="bi bi-plus"></i> 項目を追加
-                            </button>
+                            <div class="text-end mb-2">
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addEditItem()">
+                                    <i class="bi bi-plus-circle"></i> 項目を追加
+                                </button>
+                            </div>
                         </div>
-
                         <div class="mb-3">
                             <label for="edit_price" class="form-label">合計金額</label>
-                            <input type="number" class="form-control" id="edit_price" name="price" readonly>
+                            <input type="number" name="price" id="edit_price" class="form-control" required>
+                            <div class="form-text">項目を入力すると自動計算されます</div>
                         </div>
-
                         <div class="mb-3">
-                            <label for="edit_note" class="form-label">メモ</label>
-                            <textarea class="form-control" id="edit_note" name="note" rows="2"></textarea>
+                            <label for="edit_note" class="form-label">備考（任意）</label>
+                            <input type="text" name="note" id="edit_note" class="form-control">
                         </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
-                        <button type="submit" class="btn btn-primary">更新</button>
-                    </div>
-                </form>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                    <button type="button" class="btn btn-primary" onclick="submitEditForm()">更新</button>
+                </div>
             </div>
         </div>
     </div>
@@ -724,10 +694,113 @@ unset($transaction); // 参照を解除
             </div>
         </div>
     </div>
+    <!-- 決済方法管理モーダル -->
+    <div class="modal fade" id="paymentMethodModal" tabindex="-1" aria-labelledby="paymentMethodModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="paymentMethodModalLabel">決済方法の管理</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-primary" onclick="addPaymentMethod()">
+                            <i class="bi bi-plus-circle"></i> 新規追加
+                        </button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>決済方法</th>
+                                    <th>種類</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="paymentMethodsList">
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 決済方法追加モーダル -->
+    <div class="modal fade" id="addPaymentMethodModal" tabindex="-1" aria-labelledby="addPaymentMethodModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addPaymentMethodModalLabel">決済方法の追加</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form onsubmit="event.preventDefault(); submitPaymentMethod(this);">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="payment_method_name" class="form-label">決済方法名</label>
+                            <input type="text" class="form-control" id="payment_method_name" name="name" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="payment_method_type" class="form-label">種類</label>
+                            <select class="form-select" id="payment_method_type" name="type" required>
+                                <option value="">選択してください</option>
+                                <option value="cash">現金</option>
+                                <option value="credit">クレジットカード</option>
+                                <option value="debit">デビットカード</option>
+                                <option value="prepaid">プリペイド</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">キャンセル</button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> 追加
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
 
 <script>
+    // グローバル変数としてモーダルインスタンスを保持
+    let settingsModalInstance;
+    let editModalInstance;
+
+    // モーダルの初期化
+    document.addEventListener('DOMContentLoaded', function() {
+        // 編集モーダルの初期化
+        const editModal = document.getElementById('editTransactionModal');
+        if (editModal) {
+            editModalInstance = new bootstrap.Modal(editModal);
+        }
+
+        // 設定モーダルの初期化
+        const settingsModal = document.getElementById('settingsModal');
+        if (settingsModal) {
+            settingsModalInstance = new bootstrap.Modal(settingsModal);
+        }
+
+        // 決済方法のリストを読み込む
+        loadPaymentMethods();
+
+        // 設定ボタンのイベントリスナー
+        document.querySelector('.settings-button').addEventListener('click', function() {
+            if (settingsModalInstance) {
+                settingsModalInstance.show();
+            }
+        });
+    });
+
+    // 決済方法の管理を表示
+    function showSettings() {
+        if (settingsModalInstance) {
+            settingsModalInstance.show();
+        }
+    }
+
     window.changeMonth = function(diff) {
         const urlParams = new URLSearchParams(window.location.search);
         let currentMonth = urlParams.get('month') || '<?php echo date('Y-m'); ?>';
@@ -743,4 +816,275 @@ unset($transaction); // 参照を解除
         urlParams.set('month', newMonth);
         window.location.href = window.location.pathname + '?' + urlParams.toString();
     };
+
+    // 取引の削除
+    async function deleteTransaction(id) {
+        if (!id) {
+            console.error('取引IDが指定されていません');
+            return;
+        }
+
+        if (!confirm('この取引を削除してもよろしいですか？')) {
+            return;
+        }
+
+        try {
+            console.log('削除開始 - 取引ID:', id);
+            const response = await fetch(`api/transaction.php?id=${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            console.log('APIレスポンス状態:', response.status, response.statusText);
+            const responseText = await response.text();
+            console.log('APIレスポンス本文:', responseText);
+
+            let result;
+            try {
+                result = JSON.parse(responseText);
+                console.log('パース済みレスポンス:', result);
+            } catch (e) {
+                console.error('JSONパースエラー:', e);
+                throw new Error('サーバーからの応答を解析できませんでした');
+            }
+
+            if (!response.ok) {
+                throw new Error(`APIエラー: ${response.status} ${response.statusText}`);
+            }
+
+            if (result.success) {
+                // 成功メッセージを表示
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                alertDiv.style.zIndex = '9999';
+                alertDiv.innerHTML = `
+                    <i class="bi bi-check-circle-fill"></i>
+                    ${result.message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                document.body.appendChild(alertDiv);
+
+                // 2秒後にページをリロード
+                setTimeout(() => {
+                    location.reload();
+                }, 2000);
+            } else {
+                throw new Error(result.message || '削除に失敗しました');
+            }
+        } catch (error) {
+            console.error('エラー詳細:', error);
+            alert('削除に失敗しました: ' + error.message);
+        }
+    }
+
+    // 取引の編集
+    async function editTransaction(id) {
+        try {
+            console.log('編集開始 - 取引ID:', id);
+
+            // 取引データを取得
+            const response = await fetch(`api/transaction.php?id=${id}`);
+            const result = await response.json();
+            
+            console.log('APIレスポンス:', result);
+            
+            if (!result.success) {
+                throw new Error(result.message);
+            }
+
+            const data = result.data;
+            console.log('取得したデータ:', data);
+
+            // フォームに値を設定
+            const form = document.getElementById('editTransactionForm');
+            
+            // hidden input
+            form.querySelector('[name="id"]').value = data.id;
+            console.log('ID設定:', data.id);
+            
+            // 日付
+            form.querySelector('[name="date"]').value = data.date;
+            console.log('日付設定:', data.date);
+            
+            // 取引種別
+            const typeRadio = form.querySelector(`input[name="transaction_type"][value="${data.transaction_type}"]`);
+            if (typeRadio) {
+                typeRadio.checked = true;
+                console.log('取引種別設定:', data.transaction_type);
+            }
+            
+            // 取引先
+            form.querySelector('[name="store_name"]').value = data.store_name || '';
+            console.log('取引先設定:', data.store_name);
+            
+            // 決済方法
+            form.querySelector('[name="payment_method_id"]').value = data.payment_method_id;
+            console.log('決済方法設定:', data.payment_method_id);
+            
+            // 金額
+            form.querySelector('[name="price"]').value = data.price;
+            console.log('金額設定:', data.price);
+            
+            // 備考
+            form.querySelector('[name="note"]').value = data.note || '';
+            console.log('備考設定:', data.note);
+
+            // 取引項目を設定
+            const itemsContainer = document.getElementById('edit_items_container');
+            itemsContainer.innerHTML = '';
+            
+            if (data.items && data.items.length > 0) {
+                data.items.forEach(item => {
+                    const itemHtml = `
+                        <div class="mb-2 item-row">
+                            <div class="row">
+                                <div class="col-7">
+                                    <input type="text" class="form-control item-name" value="${item.product_name}" required>
+                                </div>
+                                <div class="col-4">
+                                    <input type="number" class="form-control item-price" value="${item.price}" required>
+                                </div>
+                                <div class="col-1">
+                                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-row').remove()">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    itemsContainer.insertAdjacentHTML('beforeend', itemHtml);
+                });
+                console.log('取引項目設定完了');
+            }
+
+            // モーダルを表示
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editTransactionModal'));
+            modal.show();
+            console.log('モーダル表示完了');
+        } catch (error) {
+            console.error('編集エラー:', error);
+            alert('取引データの取得に失敗しました: ' + error.message);
+        }
+    }
+
+    // フォーム送信処理
+    async function submitEditForm() {
+        const form = document.getElementById('editTransactionForm');
+        if (!form) {
+            console.error('編集フォームが見つかりません');
+            return;
+        }
+        await updateTransaction(form);
+    }
+
+    // 取引の更新
+    async function updateTransaction(form) {
+        try {
+            // フォームデータを収集
+            const items = [];
+            form.querySelectorAll('.item-row').forEach(row => {
+                items.push({
+                    product_name: row.querySelector('.item-name').value,
+                    price: parseInt(row.querySelector('.item-price').value)
+                });
+            });
+
+            // デバッグ用の値の確認
+            const formData = {
+                id: form.querySelector('[name="id"]').value,
+                date: form.querySelector('[name="date"]').value,
+                transaction_type: form.querySelector('input[name="transaction_type"]:checked')?.value,
+                store_name: form.querySelector('[name="store_name"]').value,
+                payment_method_id: form.querySelector('[name="payment_method_id"]').value,
+                price: parseInt(form.querySelector('[name="price"]').value),
+                note: form.querySelector('[name="note"]').value,
+                items: items
+            };
+
+            console.log('送信前のデータ:', formData);
+
+            // 必須項目のチェック
+            if (!formData.id) throw new Error('取引IDが見つかりません');
+            if (!formData.date) throw new Error('日付を入力してください');
+            if (!formData.transaction_type) throw new Error('取引種別を選択してください');
+            if (!formData.store_name) throw new Error('取引先を入力してください');
+            if (!formData.payment_method_id) throw new Error('決済方法を選択してください');
+            if (!formData.price) throw new Error('金額を入力してください');
+
+            // APIを呼び出して更新
+            const response = await fetch('api/transaction.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(formData)
+            });
+
+            let result;
+            try {
+                result = await response.json();
+                console.log('APIレスポンス:', result);
+            } catch (e) {
+                console.error('JSONパースエラー:', e);
+                throw new Error('サーバーからの応答を解析できませんでした');
+            }
+
+            if (!response.ok) {
+                throw new Error(`APIエラー: ${response.status} ${response.statusText}`);
+            }
+
+            if (result.success) {
+                // 成功メッセージを表示
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert alert-success alert-dismissible fade show';
+                alertDiv.innerHTML = `
+                    <i class="bi bi-check-circle-fill"></i>
+                    取引を更新しました
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                `;
+                document.querySelector('.container').insertBefore(alertDiv, document.querySelector('.container').firstChild);
+
+                // モーダルを閉じる
+                const modal = bootstrap.Modal.getInstance(document.getElementById('editTransactionModal'));
+                modal.hide();
+
+                // 1秒後にページをリロード
+                setTimeout(() => {
+                    location.reload();
+                }, 1000);
+            } else {
+                throw new Error(result.message || '更新に失敗しました');
+            }
+        } catch (error) {
+            console.error('エラー詳細:', error);
+            alert('更新に失敗しました: ' + error.message);
+        }
+    }
+
+    // 項目の追加（編集モーダル用）
+    function addEditItem() {
+        const container = document.getElementById('edit_items_container');
+        const itemHtml = `
+            <div class="mb-2 item-row">
+                <div class="row">
+                    <div class="col-7">
+                        <input type="text" class="form-control item-name" required>
+                    </div>
+                    <div class="col-4">
+                        <input type="number" class="form-control item-price" required>
+                    </div>
+                    <div class="col-1">
+                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-row').remove()">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', itemHtml);
+    }
 </script>
+
+<script src="assets/js/payment_methods.js"></script>

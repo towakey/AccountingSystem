@@ -28,8 +28,15 @@ if (!isset($_SESSION)) {
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="navbarDropdown">
                             <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#settingsModal">入力設定</a></li>
-                            <li><a class="dropdown-item" href="payment_methods.php">決済方法管理</a></li>
+                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#paymentMethodModal">決済方法管理</a></li>
                             <li><hr class="dropdown-divider"></li>
+                            <li class="dropdown-header">データ管理</li>
+                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=transactions&range=month">今月の取引データをエクスポート</a></li>
+                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=transactions&range=all">全期間の取引データをエクスポート</a></li>
+                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=payment_methods">決済方法のエクスポート</a></li>
+                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=settings">設定のエクスポート</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="/AccountingSystem/tools/import_csv.php">データのインポート</a></li>
                             <li><a class="dropdown-item" href="change_password.php">パスワード変更</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="logout.php">ログアウト</a></li>
