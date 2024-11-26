@@ -21,6 +21,67 @@ $user_id = $_SESSION['user_id'];
 // ユーザー名を取得
 $username = get_username($pdo, $user_id);
 
+// 取引の登録処理
+if (isset($_POST['submit'])) {
+    try {
+        $pdo->beginTransaction();
+
+        // 取引データの登録
+        $stmt = $pdo->prepare("
+            INSERT INTO kakeibo_data 
+            (user_id, date, store_name, price, payment_method_id, note, transaction_type) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([
+            $user_id,
+            $_POST['date'],
+            $_POST['store_name'],
+            $_POST['price'],
+            $_POST['payment_method_id'],
+            $_POST['note'] ?? '',
+            $_POST['transaction_type']
+        ]);
+        
+        $transaction_id = $pdo->lastInsertId();
+
+        // 店舗名を履歴に保存
+        $stmt = $pdo->prepare("INSERT OR IGNORE INTO stores (user_id, store_name) VALUES (?, ?)");
+        $stmt->execute([$user_id, $_POST['store_name']]);
+
+        // 取引項目の登録
+        if (isset($_POST['items']) && is_array($_POST['items'])) {
+            $stmt = $pdo->prepare("
+                INSERT INTO transaction_items 
+                (transaction_id, product_name, price) 
+                VALUES (?, ?, ?)
+            ");
+            
+            foreach ($_POST['items'] as $item) {
+                if (!empty($item['name']) && isset($item['price'])) {
+                    $stmt->execute([
+                        $transaction_id,
+                        $item['name'],
+                        $item['price']
+                    ]);
+                    
+                    // 商品名を履歴に保存
+                    $stmt_product = $pdo->prepare("INSERT OR IGNORE INTO products (user_id, product_name) VALUES (?, ?)");
+                    $stmt_product->execute([$user_id, $item['name']]);
+                }
+            }
+        }
+
+        $pdo->commit();
+        $_SESSION['alert'] = ['type' => 'success', 'message' => '取引を登録しました。'];
+        header("Location: " . $_SERVER['PHP_SELF']);
+        exit;
+    } catch (PDOException $e) {
+        $pdo->rollBack();
+        error_log("取引の登録に失敗: " . $e->getMessage());
+        $_SESSION['alert'] = ['type' => 'danger', 'message' => '取引の登録に失敗しました。'];
+    }
+}
+
 // ユーザー設定の取得
 try {
     $stmt = $pdo->prepare("SELECT * FROM user_settings WHERE user_id = ?");
