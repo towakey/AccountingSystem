@@ -3,6 +3,27 @@ require_once 'auth_check.php';
 require_once 'db.php';
 require_once 'functions.php';
 
+// 支払方法の取得
+$stmt = $pdo->prepare("
+    SELECT id, name 
+    FROM payment_methods 
+    WHERE user_id = ? 
+    ORDER BY id ASC
+");
+$stmt->execute([$_SESSION['user_id']]);
+$payment_methods = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// 支払方法ごとの色を定義
+$colors = [
+    'rgb(255, 159, 64)',   // オレンジ
+    'rgb(75, 192, 192)',   // ティール
+    'rgb(153, 102, 255)',  // 紫
+    'rgb(255, 205, 86)',   // 黄色
+    'rgb(54, 162, 235)',   // 青
+    'rgb(255, 99, 132)',   // 赤
+    'rgb(201, 203, 207)'   // グレー
+];
+
 // 過去12ヶ月分の月を生成
 $months = array();
 $month_data = array();
@@ -11,20 +32,27 @@ for ($i = 11; $i >= 0; $i--) {
     $months[] = date('Y年n月', strtotime($month));
     $month_data[$month] = array(
         'total_expense' => 0,
-        'total_income' => 0
+        'total_income' => 0,
+        'payment_methods' => array()
     );
+    // 支払方法ごとの初期値を設定
+    foreach ($payment_methods as $method) {
+        $month_data[$month]['payment_methods'][$method['id']] = 0;
+    }
 }
 
-// データを取得
+// 収支データの取得
 $stmt = $pdo->prepare("
     SELECT 
         strftime('%Y-%m', date) as month,
         SUM(CASE WHEN transaction_type = 'expense' THEN price ELSE 0 END) as total_expense,
-        SUM(CASE WHEN transaction_type = 'income' THEN price ELSE 0 END) as total_income
+        SUM(CASE WHEN transaction_type = 'income' THEN price ELSE 0 END) as total_income,
+        payment_method_id,
+        SUM(CASE WHEN transaction_type = 'expense' THEN price ELSE 0 END) as method_expense
     FROM kakeibo_data 
     WHERE user_id = ? 
     AND date >= date('now', '-11 months', 'start of month')
-    GROUP BY strftime('%Y-%m', date)
+    GROUP BY strftime('%Y-%m', date), payment_method_id
     ORDER BY month ASC
 ");
 $stmt->execute([$_SESSION['user_id']]);
@@ -33,19 +61,39 @@ $monthly_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 // 取得したデータを配列にマージ
 foreach ($monthly_data as $data) {
     if (isset($month_data[$data['month']])) {
-        $month_data[$data['month']] = array(
-            'total_expense' => (int)$data['total_expense'],
-            'total_income' => (int)$data['total_income']
-        );
+        // 支払方法別の支出を加算
+        if ($data['payment_method_id'] !== null) {
+            $month_data[$data['month']]['payment_methods'][$data['payment_method_id']] = (int)$data['method_expense'];
+        }
+        // 合計金額を更新（payment_method_idがnullのデータも含める）
+        $month_data[$data['month']]['total_expense'] += (int)$data['total_expense'];
+        $month_data[$data['month']]['total_income'] += (int)$data['total_income'];
     }
 }
 
 // グラフ用のデータを準備
 $expenses = array();
 $incomes = array();
+$payment_method_expenses = array();
+
+// 支払方法ごとの配列を初期化
+foreach ($payment_methods as $index => $method) {
+    $payment_method_expenses[$method['id']] = array(
+        'name' => $method['name'],
+        'color' => $colors[$index % count($colors)], // 色の配列を循環させて使用
+        'data' => array()
+    );
+}
+
+// データを配列に格納
 foreach ($month_data as $data) {
     $expenses[] = $data['total_expense'];
     $incomes[] = $data['total_income'];
+    
+    // 支払方法ごとのデータを格納
+    foreach ($payment_methods as $method) {
+        $payment_method_expenses[$method['id']]['data'][] = $data['payment_methods'][$method['id']];
+    }
 }
 ?>
 
@@ -78,6 +126,9 @@ foreach ($month_data as $data) {
                         <th>月</th>
                         <th class="text-end">収入</th>
                         <th class="text-end">支出</th>
+                        <?php foreach ($payment_methods as $method): ?>
+                        <th class="text-end"><?php echo htmlspecialchars($method['name']); ?></th>
+                        <?php endforeach; ?>
                         <th class="text-end">収支</th>
                     </tr>
                 </thead>
@@ -90,6 +141,9 @@ foreach ($month_data as $data) {
                             <td><?php echo $months[$i]; ?></td>
                             <td class="text-end"><?php echo number_format($data['total_income']); ?>円</td>
                             <td class="text-end"><?php echo number_format($data['total_expense']); ?>円</td>
+                            <?php foreach ($payment_methods as $method): ?>
+                            <td class="text-end"><?php echo number_format($data['payment_methods'][$method['id']]); ?>円</td>
+                            <?php endforeach; ?>
                             <td class="text-end">
                                 <?php 
                                 $balance = $data['total_income'] - $data['total_expense'];
@@ -110,26 +164,42 @@ foreach ($month_data as $data) {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         const ctx = document.getElementById('monthlyChart').getContext('2d');
+        
+        // データセットの準備
+        const datasets = [
+            {
+                label: '収入',
+                data: <?php echo json_encode($incomes); ?>,
+                borderColor: 'rgb(75, 192, 192)',
+                tension: 0.1,
+                fill: false
+            },
+            {
+                label: '支出（合計）',
+                data: <?php echo json_encode($expenses); ?>,
+                borderColor: 'rgb(255, 99, 132)',
+                tension: 0.1,
+                fill: false
+            }
+        ];
+
+        // 支払方法別のデータセットを追加
+        <?php foreach ($payment_method_expenses as $method): ?>
+        datasets.push({
+            label: '<?php echo addslashes($method['name']); ?>',
+            data: <?php echo json_encode($method['data']); ?>,
+            borderColor: '<?php echo $method['color']; ?>',
+            tension: 0.1,
+            fill: false,
+            borderDash: [5, 5] // 点線で表示
+        });
+        <?php endforeach; ?>
+
         new Chart(ctx, {
             type: 'line',
             data: {
                 labels: <?php echo json_encode($months); ?>,
-                datasets: [
-                    {
-                        label: '収入',
-                        data: <?php echo json_encode($incomes); ?>,
-                        borderColor: 'rgb(75, 192, 192)',
-                        tension: 0.1,
-                        fill: false
-                    },
-                    {
-                        label: '支出',
-                        data: <?php echo json_encode($expenses); ?>,
-                        borderColor: 'rgb(255, 99, 132)',
-                        tension: 0.1,
-                        fill: false
-                    }
-                ]
+                datasets: datasets
             },
             options: {
                 responsive: true,
