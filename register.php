@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
-                        <h1 class="h3 mb-0">ユーザー登録</h1>
+                        <h1 class="h3 mb-0 text-center">ユーザー登録</h1>
                     </div>
                     <div class="card-body">
                         <?php if (isset($error)): ?>
