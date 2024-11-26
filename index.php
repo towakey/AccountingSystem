@@ -199,8 +199,8 @@ $stmt->execute([$user_id]);
 $items_per_page = $stmt->fetchColumn() ?: 10; // デフォルトは10件
 
 // 現在のページを取得
-$current_page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-$offset = ($current_page - 1) * $items_per_page;
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$offset = ($page - 1) * $items_per_page;
 
 // 取引データの総数を取得
 $stmt = $pdo->prepare("SELECT COUNT(*) FROM kakeibo_data WHERE user_id = ? AND date BETWEEN ? AND ?");
@@ -235,7 +235,18 @@ foreach ($transactions as &$transaction) {
     $transaction['items_json'] = json_encode($items);
 }
 unset($transaction); // 参照を解除
+
+// APIエンドポイントの処理
+if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
+    header('Content-Type: application/json');
+    echo json_encode([
+        'transactions' => $transactions,
+        'hasMore' => ($offset + $items_per_page) < $total_items
+    ]);
+    exit;
+}
 ?>
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -468,7 +479,7 @@ unset($transaction); // 参照を解除
                             <th colspan="2" class="text-center">操作</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="transactionsTableBody">
                         <?php foreach ($transactions as $data): ?>
                             <tr>
                                 <td><?= date('Y/m/d', strtotime($data['date'])) ?></td>
@@ -497,6 +508,13 @@ unset($transaction); // 参照を解除
                         <?php endforeach; ?>
                     </tbody>
                 </table>
+                <?php if (($page * $items_per_page) < $total_items): ?>
+                <div class="text-center p-3">
+                    <button type="button" class="btn btn-outline-primary" onclick="loadMoreTransactions()">
+                        さらに読み込む
+                    </button>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -1206,3 +1224,86 @@ unset($transaction); // 参照を解除
 </script>
 
 <script src="assets/js/payment_methods.js"></script>
+
+<script>
+    let currentPage = 1;
+    const itemsPerPage = <?php echo $items_per_page; ?>;
+    let isLoading = false;
+
+    async function loadMoreTransactions() {
+        if (isLoading) return;
+        isLoading = true;
+        
+        const nextPage = currentPage + 1;
+        const selectedMonth = document.getElementById('currentMonth').textContent.trim()
+            .replace('年', '-').replace('月', '')
+            .split('-')
+            .map(num => num.padStart(2, '0'))
+            .join('-');
+
+        try {
+            const response = await fetch(`index.php?api=get_more_transactions&page=${nextPage}&limit=${itemsPerPage}&month=${selectedMonth}`);
+            const data = await response.json();
+
+            if (data.transactions && data.transactions.length > 0) {
+                const tbody = document.getElementById('transactionsTableBody');
+                
+                data.transactions.forEach(transaction => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${formatDate(transaction.date)}</td>
+                        <td>
+                            ${transaction.transaction_type === 'income' 
+                                ? '<span class="badge bg-success">収入</span>' 
+                                : '<span class="badge bg-danger">支出</span>'}
+                        </td>
+                        <td>${escapeHtml(transaction.store_name)}</td>
+                        <td class="text-end">
+                            ${transaction.transaction_type === 'income' ? '+' : '-'}${numberFormat(transaction.price)}円
+                        </td>
+                        <td>${escapeHtml(transaction.payment_method_name)}</td>
+                        <td>${transaction.note ? escapeHtml(transaction.note) : '-'}</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-primary" onclick="editTransaction(${transaction.id})">
+                                <i class="bi bi-pencil"></i> 編集
+                            </button>
+                            <button type="button" class="btn btn-sm btn-danger" onclick="deleteTransaction(${transaction.id})">
+                                <i class="bi bi-trash"></i> 削除
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+
+                currentPage = nextPage;
+
+                // もっと読み込むボタンの表示/非表示
+                const loadMoreButton = document.querySelector('.btn-outline-primary');
+                if (!data.hasMore && loadMoreButton) {
+                    loadMoreButton.parentElement.remove();
+                }
+            }
+        } catch (error) {
+            console.error('取引データの読み込みに失敗:', error);
+            alert('データの読み込みに失敗しました。');
+        } finally {
+            isLoading = false;
+        }
+    }
+
+    // ユーティリティ関数
+    function formatDate(dateStr) {
+        const date = new Date(dateStr);
+        return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+    }
+
+    function numberFormat(num) {
+        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+</script>
