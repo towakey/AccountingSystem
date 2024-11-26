@@ -18,7 +18,6 @@ try {
 check_login();
 
 $user_id = $_SESSION['user_id'];
-
 // ユーザー名を取得
 $username = get_username($pdo, $user_id);
 
@@ -176,7 +175,6 @@ foreach ($transactions as &$transaction) {
 }
 unset($transaction); // 参照を解除
 ?>
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -218,9 +216,7 @@ unset($transaction); // 参照を解除
         </div>
         <?php unset($_SESSION['alert']); ?>
     <?php endif; ?>
-
     <?php include 'navbar.php'; ?>
-
     <div class="container">
         <div class="row">
             <div class="col-md-6">
@@ -279,7 +275,7 @@ unset($transaction); // 参照を解除
                                             <input type="text" name="items[0][name]" class="form-control item-name" list="product_list" placeholder="項目名">
                                         </div>
                                         <div class="col-md-4">
-                                            <input type="number" name="items[0][price]" class="form-control item-price" placeholder="金額">
+                                            <input type="number" name="items[0][price]" class="form-control item-price" placeholder="金額" oninput="updateTotalPrice('inputForm')">
                                         </div>
                                         <div class="col-md-2">
                                             <button type="button" class="btn btn-outline-danger btn-remove-item" style="display: none;">
@@ -658,7 +654,7 @@ unset($transaction); // 参照を解除
                                             <input type="text" name="items[0][name]" class="form-control item-name" list="product_list" placeholder="項目名">
                                         </div>
                                         <div class="col-md-4">
-                                            <input type="number" name="items[0][price]" class="form-control item-price" placeholder="金額">
+                                            <input type="number" name="items[0][price]" class="form-control item-price" placeholder="金額" oninput="updateTotalPrice('addTransactionModal')">
                                         </div>
                                         <div class="col-md-2">
                                             <button type="button" class="btn btn-outline-danger btn-remove-item">
@@ -944,10 +940,10 @@ unset($transaction); // 参照を解除
                                     <input type="text" class="form-control item-name" value="${item.product_name}" required>
                                 </div>
                                 <div class="col-4">
-                                    <input type="number" class="form-control item-price" value="${item.price}" required>
+                                    <input type="number" class="form-control item-price" value="${item.price}" required oninput="updateTotalPrice('editTransactionForm')">
                                 </div>
                                 <div class="col-1">
-                                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-row').remove()">
+                                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-row').remove(); updateTotalPrice('editTransactionForm')">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </div>
@@ -1073,10 +1069,10 @@ unset($transaction); // 参照を解除
                         <input type="text" class="form-control item-name" required>
                     </div>
                     <div class="col-4">
-                        <input type="number" class="form-control item-price" required>
+                        <input type="number" class="form-control item-price" required oninput="updateTotalPrice('editTransactionForm')">
                     </div>
                     <div class="col-1">
-                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-row').remove()">
+                        <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-row').remove(); updateTotalPrice('editTransactionForm')">
                             <i class="bi bi-trash"></i>
                         </button>
                     </div>
@@ -1084,6 +1080,23 @@ unset($transaction); // 参照を解除
             </div>
         `;
         container.insertAdjacentHTML('beforeend', itemHtml);
+    }
+
+    // 合計金額の更新
+    function updateTotalPrice(formId) {
+        const form = document.getElementById(formId);
+        if (!form) return;
+
+        let total = 0;
+        form.querySelectorAll('.item-price').forEach(input => {
+            const price = parseInt(input.value) || 0;
+            total += price;
+        });
+
+        const priceInput = form.querySelector('[name="price"]');
+        if (priceInput) {
+            priceInput.value = total;
+        }
     }
 </script>
 
