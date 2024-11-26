@@ -11,6 +11,11 @@ if (!isset($_SESSION)) {
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav me-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="analysis.php">
+                        <i class="fas fa-chart-line"></i> 分析
+                    </a>
+                </li>
             </ul>
             <?php if (isset($_SESSION['user_id'])): ?>
                 <ul class="navbar-nav">
