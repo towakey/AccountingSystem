@@ -270,14 +270,14 @@ if (isSystemInitialized()) {
                         <form method="POST">
                             <div class="mb-3">
                                 <label for="company_name" class="form-label">組織名</label>
-                                <input type="text" class="form-control" id="company_name" name="company_name" required>
+                                <input type="text" class="form-control" id="company_name" name="company_name" value="AccountingSystem" required>
                             </div>
                             
                             <div class="mb-3">
                                 <label for="fiscal_year_start" class="form-label">会計年度開始月</label>
                                 <select class="form-select" id="fiscal_year_start" name="fiscal_year_start" required>
                                     <?php for ($i = 1; $i <= 12; $i++): ?>
-                                        <option value="<?php echo $i; ?>"><?php echo $i; ?>月</option>
+                                        <option value="<?php echo $i; ?>" <?php echo ($i == date('n')) ? 'selected' : ''; ?>><?php echo $i; ?>月</option>
                                     <?php endfor; ?>
                                 </select>
                             </div>
@@ -293,7 +293,7 @@ if (isSystemInitialized()) {
                             
                             <div class="mb-3">
                                 <label for="items_per_page" class="form-label">1ページあたりのアイテム数</label>
-                                <input type="number" class="form-control" id="items_per_page" name="items_per_page" required>
+                                <input type="number" class="form-control" id="items_per_page" name="items_per_page" value="20" required>
                             </div>
                             
                             <div class="text-center">
