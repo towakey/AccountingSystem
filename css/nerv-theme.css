@@ -45,6 +45,17 @@ body.nerv-theme {
     color: var(--nerv-green);
 }
 
+.nerv-theme .card-header h1,
+.nerv-theme .card-header h2,
+.nerv-theme .card-header h3,
+.nerv-theme .card-header h4,
+.nerv-theme .card-header h5,
+.nerv-theme .card-header h6,
+.nerv-theme .card-header span,
+.nerv-theme .card-header div {
+    color: var(--nerv-green);
+}
+
 /* Table styling */
 .nerv-theme .table {
     color: var(--nerv-text);
@@ -117,6 +128,22 @@ body.nerv-theme {
 .nerv-theme .expense-amount {
     color: var(--nerv-red);
     font-weight: bold;
+}
+
+.nerv-theme .card-body span {
+    color: var(--nerv-text);
+}
+
+.nerv-theme .card .d-flex.justify-content-between.align-items-center span:not(.text-danger) {
+    color: var(--nerv-green) !important;
+}
+
+.nerv-theme .payment-method-name {
+    color: var(--nerv-green) !important;
+}
+
+.nerv-theme .payment-name {
+    color: var(--nerv-green) !important;
 }
 
 /* DataVIEW headers */

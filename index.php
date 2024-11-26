@@ -367,7 +367,7 @@ unset($transaction); // 参照を解除
                             <h6 class="mb-3">決済方法別支出</h6>
                             <?php foreach ($payment_totals as $payment): ?>
                             <div class="d-flex justify-content-between align-items-center mb-2">
-                                <span><?php echo htmlspecialchars($payment['payment_method']); ?></span>
+                                <span class="payment-name"><?php echo htmlspecialchars($payment['payment_method']); ?></span>
                                 <span class="text-danger">-<?php echo number_format($payment['total']); ?>円</span>
                             </div>
                             <?php endforeach; ?>
