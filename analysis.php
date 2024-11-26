@@ -53,7 +53,7 @@ $stmt = $pdo->prepare("
     WHERE user_id = ? 
     AND date >= date('now', '-11 months', 'start of month')
     GROUP BY strftime('%Y-%m', date), payment_method_id
-    ORDER BY month ASC
+    ORDER BY month ASC, payment_method_id ASC
 ");
 $stmt->execute([$_SESSION['user_id']]);
 $monthly_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -79,8 +79,9 @@ $payment_method_expenses = array();
 // 支払方法ごとの配列を初期化
 foreach ($payment_methods as $index => $method) {
     $payment_method_expenses[$method['id']] = array(
+        'id' => $method['id'],
         'name' => $method['name'],
-        'color' => $colors[$index % count($colors)], // 色の配列を循環させて使用
+        'color' => $colors[$index % count($colors)],
         'data' => array()
     );
 }
@@ -95,8 +96,25 @@ foreach ($month_data as $data) {
         $payment_method_expenses[$method['id']]['data'][] = $data['payment_methods'][$method['id']];
     }
 }
-?>
 
+// JavaScriptで使用するデータを準備
+$chartData = [
+    'months' => $months,
+    'incomes' => $incomes,
+    'expenses' => $expenses,
+    'methodDatasets' => array_map(function($method) {
+        return [
+            'label' => $method['name'],
+            'data' => $method['data'],
+            'borderColor' => $method['color'],
+            'tension' => 0.1,
+            'fill' => false,
+            'borderDash' => [5, 5],
+            'methodId' => $method['id']
+        ];
+    }, array_values($payment_method_expenses))
+];
+?>
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -114,6 +132,21 @@ foreach ($month_data as $data) {
         <h2>月次収支推移</h2>
         
         <div class="card mb-4">
+            <div class="card-header">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <h5 class="mb-0">収支グラフ</h5>
+                    </div>
+                    <div class="col-auto">
+                        <div class="btn-group" role="group">
+                            <?php foreach ($payment_methods as $method): ?>
+                            <input type="checkbox" class="btn-check" id="btn-<?php echo htmlspecialchars($method['id']); ?>" checked autocomplete="off" onchange="togglePaymentMethod(<?php echo $method['id']; ?>)">
+                            <label class="btn btn-outline-secondary btn-sm" for="btn-<?php echo htmlspecialchars($method['id']); ?>"><?php echo htmlspecialchars($method['name']); ?></label>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
             <div class="card-body">
                 <canvas id="monthlyChart"></canvas>
             </div>
@@ -163,66 +196,72 @@ foreach ($month_data as $data) {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const ctx = document.getElementById('monthlyChart').getContext('2d');
-        
-        // データセットの準備
-        const datasets = [
-            {
-                label: '収入',
-                data: <?php echo json_encode($incomes); ?>,
-                borderColor: 'rgb(75, 192, 192)',
-                tension: 0.1,
-                fill: false
-            },
-            {
-                label: '支出（合計）',
-                data: <?php echo json_encode($expenses); ?>,
-                borderColor: 'rgb(255, 99, 132)',
-                tension: 0.1,
-                fill: false
+        let myChart = null;
+        const chartData = <?php echo json_encode($chartData); ?>;
+
+        // 支払方法の表示/非表示を切り替える関数
+        function togglePaymentMethod(methodId) {
+            if (myChart) {
+                const methodDataset = myChart.data.datasets.find(dataset => dataset.methodId === methodId);
+                if (methodDataset) {
+                    methodDataset.hidden = !methodDataset.hidden;
+                    myChart.update();
+                }
             }
-        ];
+        }
 
-        // 支払方法別のデータセットを追加
-        <?php foreach ($payment_method_expenses as $method): ?>
-        datasets.push({
-            label: '<?php echo addslashes($method['name']); ?>',
-            data: <?php echo json_encode($method['data']); ?>,
-            borderColor: '<?php echo $method['color']; ?>',
-            tension: 0.1,
-            fill: false,
-            borderDash: [5, 5] // 点線で表示
-        });
-        <?php endforeach; ?>
+        // グラフの初期化
+        window.addEventListener('load', function() {
+            const ctx = document.getElementById('monthlyChart').getContext('2d');
+            
+            // 基本のデータセット
+            const datasets = [
+                {
+                    label: '収入',
+                    data: chartData.incomes,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+                    fill: false
+                },
+                {
+                    label: '支出（合計）',
+                    data: chartData.expenses,
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.1,
+                    fill: false
+                },
+                ...chartData.methodDatasets
+            ];
 
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: <?php echo json_encode($months); ?>,
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            callback: function(value) {
-                                return value.toLocaleString() + '円';
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: chartData.months,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString() + '円';
+                                }
                             }
                         }
-                    }
-                },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + '円';
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + '円';
+                                }
                             }
                         }
                     }
                 }
-            }
+            });
         });
     </script>
 </body>
