@@ -1161,4 +1161,48 @@ unset($transaction); // 参照を解除
     }
 </script>
 
+<script>
+    // 項目追加ボタンのクリックイベントリスナー
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('modal_add_item').addEventListener('click', function() {
+            const container = document.getElementById('modal_items_container');
+            const itemCount = container.getElementsByClassName('item-row').length;
+            
+            const newItem = document.createElement('div');
+            newItem.className = 'item-row mb-2';
+            newItem.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <input type="text" name="items[${itemCount}][name]" class="form-control item-name" list="product_list" placeholder="項目名">
+                    </div>
+                    <div class="col-md-4">
+                        <input type="number" name="items[${itemCount}][price]" class="form-control item-price" placeholder="金額" oninput="updateTotalPrice('addTransactionModal')">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-outline-danger btn-remove-item" onclick="removeItem(this)">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            container.appendChild(newItem);
+        });
+
+        // 削除ボタンの初期設定
+        document.querySelectorAll('.btn-remove-item').forEach(button => {
+            button.addEventListener('click', function() {
+                this.closest('.item-row').remove();
+                updateTotalPrice('addTransactionModal');
+            });
+        });
+    });
+
+    // 項目削除関数
+    function removeItem(button) {
+        button.closest('.item-row').remove();
+        updateTotalPrice('addTransactionModal');
+    }
+</script>
+
 <script src="assets/js/payment_methods.js"></script>

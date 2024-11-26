@@ -193,16 +193,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // 管理者ユーザーの決済手段を追加
         $db->exec("INSERT OR IGNORE INTO payment_methods (user_id, name, type, is_default) 
-                  VALUES ($admin_id, '現金', 'cash', 1)");
+                  VALUES 
+                  ($admin_id, '現金', 'cash', 1),
+                  ($admin_id, '電子マネー', 'prepaid', 0)");
 
         // 既存のユーザーにデフォルトの決済手段がない場合は追加
         $db->exec("INSERT OR IGNORE INTO payment_methods (user_id, name, type, is_default) 
-                  SELECT id, '現金', 'cash', 1 
+                  SELECT 
+                    id, 
+                    '現金', 
+                    'cash', 
+                    1
                   FROM users 
                   WHERE NOT EXISTS (
                       SELECT 1 
                       FROM payment_methods 
                       WHERE payment_methods.user_id = users.id
+                  )");
+
+        // 既存のユーザーに電子マネーを追加
+        $db->exec("INSERT OR IGNORE INTO payment_methods (user_id, name, type, is_default) 
+                  SELECT 
+                    id, 
+                    '電子マネー', 
+                    'prepaid', 
+                    0
+                  FROM users 
+                  WHERE NOT EXISTS (
+                      SELECT 1 
+                      FROM payment_methods 
+                      WHERE payment_methods.user_id = users.id 
+                      AND payment_methods.name = '電子マネー'
                   )");
 
         // 既存のユーザーに設定がない場合は追加

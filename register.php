@@ -25,6 +25,26 @@ try {
         FOREIGN KEY (user_id) REFERENCES users(id),
         UNIQUE(user_id, name)
     )");
+
+    // ユーザー設定テーブルの作成
+    $pdo->exec("CREATE TABLE IF NOT EXISTS user_settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        input_mode TEXT DEFAULT 'modal',
+        theme TEXT DEFAULT 'light',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )");
+
+    // カスタムフィールドテーブルの作成
+    $pdo->exec("CREATE TABLE IF NOT EXISTS custom_fields (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        field_name TEXT NOT NULL,
+        field_value TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )");
 } catch (PDOException $e) {
     die("テーブル作成エラー: " . $e->getMessage());
 }
@@ -49,6 +69,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // ユーザー設定の初期化
         $stmt = $pdo->prepare("INSERT INTO user_settings (user_id, input_mode, theme) VALUES (?, 'modal', 'light')");
         $stmt->execute([$user_id]);
+
+        // カスタムフィールドの保存
+        foreach ($_POST as $key => $value) {
+            if (strpos($key, 'custom_field_') === 0 && !empty($value)) {
+                $stmt = $pdo->prepare("INSERT INTO custom_fields (user_id, field_name, field_value) VALUES (?, ?, ?)");
+                $stmt->execute([$user_id, $key, $value]);
+            }
+        }
 
         $pdo->commit();
         header('Location: login.php');
@@ -85,13 +113,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         <?php endif; ?>
                         
                         <form method="post">
-                            <div class="mb-3">
-                                <label for="username" class="form-label">ユーザー名</label>
-                                <input type="text" name="username" id="username" class="form-control" required>
+                            <div id="form-fields">
+                                <div class="mb-3">
+                                    <label for="username" class="form-label">ユーザー名</label>
+                                    <input type="text" name="username" id="username" class="form-control" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="password" class="form-label">パスワード</label>
+                                    <input type="password" name="password" id="password" class="form-control" required>
+                                </div>
                             </div>
                             <div class="mb-3">
-                                <label for="password" class="form-label">パスワード</label>
-                                <input type="password" name="password" id="password" class="form-control" required>
+                                <button type="button" class="btn btn-secondary" onclick="addField()">項目を追加</button>
                             </div>
                             <div class="d-grid">
                                 <button type="submit" class="btn btn-primary">登録</button>
@@ -106,5 +139,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function addField() {
+            const container = document.getElementById('form-fields');
+            const fieldCount = container.getElementsByClassName('custom-field').length;
+            
+            const newField = document.createElement('div');
+            newField.className = 'mb-3 custom-field';
+            newField.innerHTML = `
+                <div class="input-group">
+                    <input type="text" name="custom_field_${fieldCount + 1}" class="form-control" placeholder="新しい項目">
+                    <button type="button" class="btn btn-outline-danger" onclick="this.parentElement.parentElement.remove()">削除</button>
+                </div>
+            `;
+            
+            container.appendChild(newField);
+        }
+    </script>
 </body>
 </html>
