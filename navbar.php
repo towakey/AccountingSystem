@@ -11,14 +11,6 @@ if (!isset($_SESSION)) {
         </button>
         <div class="collapse navbar-collapse" id="navbarNav">
             <ul class="navbar-nav me-auto">
-                <li class="nav-item">
-                    <a class="nav-link" href="index.php">ホーム</a>
-                </li>
-                <?php if (isset($_SESSION['user_id'])): ?>
-                <li class="nav-item">
-                    <a class="nav-link" href="import.php">データインポート</a>
-                </li>
-                <?php endif; ?>
             </ul>
             <?php if (isset($_SESSION['user_id'])): ?>
                 <ul class="navbar-nav">
@@ -31,12 +23,14 @@ if (!isset($_SESSION)) {
                             <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#paymentMethodModal">決済方法管理</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li class="dropdown-header">データ管理</li>
-                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=transactions&range=month">今月の取引データをエクスポート</a></li>
-                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=transactions&range=all">全期間の取引データをエクスポート</a></li>
-                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=payment_methods">決済方法のエクスポート</a></li>
-                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=settings">設定のエクスポート</a></li>
+                            <li class="dropdown-header"><small>CSVファイル</small></li>
+                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=transactions&range=month">今月の取引をエクスポート</a></li>
+                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=transactions&range=all">全期間の取引をエクスポート</a></li>
+                            <li><a class="dropdown-item" href="/AccountingSystem/tools/export_csv.php?type=payment_methods">決済方法をエクスポート</a></li>
+                            <li><a class="dropdown-item" href="/AccountingSystem/tools/import_csv.php">CSVファイルをインポート</a></li>
+                            <li class="dropdown-header"><small>JSONファイル</small></li>
+                            <li><a class="dropdown-item" href="import.php">JSONファイルをインポート</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="/AccountingSystem/tools/import_csv.php">データのインポート</a></li>
                             <li><a class="dropdown-item" href="change_password.php">パスワード変更</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="logout.php">ログアウト</a></li>
