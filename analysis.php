@@ -24,96 +24,130 @@ $colors = [
     'rgb(201, 203, 207)'   // グレー
 ];
 
-// 過去12ヶ月分の月を生成
-$months = array();
-$month_data = array();
-for ($i = 11; $i >= 0; $i--) {
-    $month = date('Y-m', strtotime("-$i months"));
-    $months[] = date('Y年n月', strtotime($month));
-    $month_data[$month] = array(
-        'total_expense' => 0,
-        'total_income' => 0,
-        'payment_methods' => array()
-    );
-    // 支払方法ごとの初期値を設定
+// 現在の年を取得（デフォルト）
+$current_year = isset($_GET['year']) ? intval($_GET['year']) : date('Y');
+$previous_year = $current_year - 1;
+
+// 利用可能な年のリストを取得
+$stmt = $pdo->prepare('SELECT DISTINCT strftime("%Y", date) as year FROM kakeibo_data ORDER BY year DESC');
+$stmt->execute();
+$available_years = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+// 月次データの取得（現在年）
+function getYearlyData($pdo, $year, $payment_methods, $user_id) {
+    $months = [];
+    $incomes = array_fill(0, 12, 0);
+    $expenses = array_fill(0, 12, 0);
+    $method_expenses = [];
+
+    // 支払方法ごとの配列を初期化
     foreach ($payment_methods as $method) {
-        $month_data[$month]['payment_methods'][$method['id']] = 0;
+        $method_expenses[$method['id']] = array_fill(0, 12, 0);
     }
-}
 
-// 収支データの取得
-$stmt = $pdo->prepare("
-    SELECT 
-        strftime('%Y-%m', date) as month,
-        SUM(CASE WHEN transaction_type = 'expense' THEN price ELSE 0 END) as total_expense,
-        SUM(CASE WHEN transaction_type = 'income' THEN price ELSE 0 END) as total_income,
-        payment_method_id,
-        SUM(CASE WHEN transaction_type = 'expense' THEN price ELSE 0 END) as method_expense
-    FROM kakeibo_data 
-    WHERE user_id = ? 
-    AND date >= date('now', '-11 months', 'start of month')
-    GROUP BY strftime('%Y-%m', date), payment_method_id
-    ORDER BY month ASC, payment_method_id ASC
-");
-$stmt->execute([$_SESSION['user_id']]);
-$monthly_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    // 月次データの取得
+    $stmt = $pdo->prepare('
+        SELECT 
+            strftime("%m", date) as month,
+            transaction_type,
+            payment_method_id,
+            SUM(price) as total
+        FROM kakeibo_data
+        WHERE strftime("%Y", date) = :year
+        AND user_id = :user_id
+        GROUP BY strftime("%m", date), transaction_type, payment_method_id
+        ORDER BY month
+    ');
+    $stmt->execute(['year' => $year, 'user_id' => $user_id]);
+    $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// 取得したデータを配列にマージ
-foreach ($monthly_data as $data) {
-    if (isset($month_data[$data['month']])) {
-        // 支払方法別の支出を加算
-        if ($data['payment_method_id'] !== null) {
-            $month_data[$data['month']]['payment_methods'][$data['payment_method_id']] = (int)$data['method_expense'];
+    // データの整形
+    foreach ($results as $row) {
+        $month_index = intval($row['month']) - 1;
+        if ($row['transaction_type'] === 'income') {
+            $incomes[$month_index] = $row['total'];
+        } else {
+            $expenses[$month_index] += $row['total'];
+            if ($row['payment_method_id']) {
+                $method_expenses[$row['payment_method_id']][$month_index] = $row['total'];
+            }
         }
-        // 合計金額を更新（payment_method_idがnullのデータも含める）
-        $month_data[$data['month']]['total_expense'] += (int)$data['total_expense'];
-        $month_data[$data['month']]['total_income'] += (int)$data['total_income'];
     }
-}
 
-// グラフ用のデータを準備
-$expenses = array();
-$incomes = array();
-$payment_method_expenses = array();
-
-// 支払方法ごとの配列を初期化
-foreach ($payment_methods as $index => $method) {
-    $payment_method_expenses[$method['id']] = array(
-        'id' => $method['id'],
-        'name' => $method['name'],
-        'color' => $colors[$index % count($colors)],
-        'data' => array()
-    );
-}
-
-// データを配列に格納
-foreach ($month_data as $data) {
-    $expenses[] = $data['total_expense'];
-    $incomes[] = $data['total_income'];
-    
-    // 支払方法ごとのデータを格納
-    foreach ($payment_methods as $method) {
-        $payment_method_expenses[$method['id']]['data'][] = $data['payment_methods'][$method['id']];
+    // 月名の配列を生成
+    for ($i = 1; $i <= 12; $i++) {
+        $months[] = $i . '月';
     }
+
+    return [
+        'months' => $months,
+        'incomes' => $incomes,
+        'expenses' => $expenses,
+        'method_expenses' => $method_expenses
+    ];
 }
 
-// JavaScriptで使用するデータを準備
-$chartData = [
-    'months' => $months,
-    'incomes' => $incomes,
-    'expenses' => $expenses,
-    'methodDatasets' => array_map(function($method) {
-        return [
-            'label' => $method['name'],
-            'data' => $method['data'],
-            'borderColor' => $method['color'],
-            'tension' => 0.1,
-            'fill' => false,
-            'borderDash' => [5, 5],
-            'methodId' => $method['id']
-        ];
-    }, array_values($payment_method_expenses))
+// 現在年と前年のデータを取得
+$current_year_data = getYearlyData($pdo, $current_year, $payment_methods, $_SESSION['user_id']);
+$previous_year_data = getYearlyData($pdo, $previous_year, $payment_methods, $_SESSION['user_id']);
+
+// Chart.js用のデータセット作成
+$colors = [
+    'rgb(255, 99, 132)',   // 赤
+    'rgb(54, 162, 235)',   // 青
+    'rgb(255, 206, 86)',   // 黄
+    'rgb(75, 192, 192)',   // 緑
+    'rgb(153, 102, 255)',  // 紫
+    'rgb(255, 159, 64)',   // オレンジ
+    'rgb(199, 199, 199)',  // グレー
+    'rgb(83, 102, 255)',   // 青紫
+    'rgb(255, 99, 255)',   // ピンク
 ];
+
+// 支払方法ごとのデータセット作成
+$methodDatasets = [];
+foreach ($payment_methods as $index => $method) {
+    $color = $colors[$index % count($colors)];
+    $methodDatasets[] = [
+        'label' => $method['name'],
+        'methodId' => $method['id'],
+        'data' => $current_year_data['method_expenses'][$method['id']],
+        'borderColor' => $color,
+        'backgroundColor' => $color,
+        'tension' => 0.1,
+        'fill' => false,
+        'hidden' => false
+    ];
+}
+
+// 前年の支払方法ごとのデータセット作成
+$previousMethodDatasets = [];
+foreach ($payment_methods as $index => $method) {
+    $color = $colors[$index % count($colors)];
+    $previousMethodDatasets[] = [
+        'label' => $method['name'] . '（前年）',
+        'methodId' => $method['id'],
+        'data' => $previous_year_data['method_expenses'][$method['id']],
+        'borderColor' => $color,
+        'backgroundColor' => $color,
+        'tension' => 0.1,
+        'fill' => false,
+        'hidden' => true,
+        'borderDash' => [5, 5]
+    ];
+}
+
+// チャートデータをJSON形式で準備
+$chartData = [
+    'months' => $current_year_data['months'],
+    'incomes' => $current_year_data['incomes'],
+    'expenses' => $current_year_data['expenses'],
+    'previousIncomes' => $previous_year_data['incomes'],
+    'previousExpenses' => $previous_year_data['expenses'],
+    'methodDatasets' => $methodDatasets,
+    'previousMethodDatasets' => $previousMethodDatasets
+];
+
 ?>
 <!DOCTYPE html>
 <html lang="ja">
@@ -129,7 +163,22 @@ $chartData = [
     <?php include 'navbar.php'; ?>
 
     <div class="container mt-4">
-        <h2>月次収支推移</h2>
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>月次収支推移</h2>
+            <div class="d-flex gap-3">
+                <select class="form-select" id="yearSelect" onchange="changeYear(this.value)">
+                    <?php foreach ($available_years as $year): ?>
+                    <option value="<?php echo $year; ?>" <?php echo $year == $current_year ? 'selected' : ''; ?>>
+                        <?php echo $year; ?>年
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" id="compareLastYear" onchange="toggleYearComparison()">
+                    <label class="form-check-label" for="compareLastYear">前年比較</label>
+                </div>
+            </div>
+        </div>
         
         <div class="row">
             <div class="col-md-8">
@@ -164,9 +213,39 @@ $chartData = [
                         <canvas id="pieChart"></canvas>
                     </div>
                 </div>
+                
+                <!-- 年間サマリーカードを追加 -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">年間サマリー</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-sm">
+                            <tr>
+                                <th>年間収入：</th>
+                                <td class="text-end"><?php echo number_format(array_sum($current_year_data['incomes'])); ?>円</td>
+                            </tr>
+                            <tr>
+                                <th>年間支出：</th>
+                                <td class="text-end"><?php echo number_format(array_sum($current_year_data['expenses'])); ?>円</td>
+                            </tr>
+                            <tr>
+                                <th>収支差額：</th>
+                                <td class="text-end">
+                                    <?php 
+                                    $annual_balance = array_sum($current_year_data['incomes']) - array_sum($current_year_data['expenses']);
+                                    $color = $annual_balance >= 0 ? 'text-success' : 'text-danger';
+                                    echo '<span class="' . $color . '">' . number_format($annual_balance) . '円</span>';
+                                    ?>
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
 
+        <!-- 月次データテーブル -->
         <div class="table-responsive">
             <table class="table table-striped">
                 <thead>
@@ -183,18 +262,18 @@ $chartData = [
                 <tbody>
                     <?php 
                     $i = 0;
-                    foreach ($month_data as $data): 
+                    foreach ($current_year_data['months'] as $month): 
                     ?>
                         <tr>
-                            <td><?php echo $months[$i]; ?></td>
-                            <td class="text-end"><?php echo number_format($data['total_income']); ?>円</td>
-                            <td class="text-end"><?php echo number_format($data['total_expense']); ?>円</td>
+                            <td><?php echo $month; ?></td>
+                            <td class="text-end"><?php echo number_format($current_year_data['incomes'][$i]); ?>円</td>
+                            <td class="text-end"><?php echo number_format($current_year_data['expenses'][$i]); ?>円</td>
                             <?php foreach ($payment_methods as $method): ?>
-                            <td class="text-end"><?php echo number_format($data['payment_methods'][$method['id']]); ?>円</td>
+                            <td class="text-end"><?php echo number_format($current_year_data['method_expenses'][$method['id']][$i]); ?>円</td>
                             <?php endforeach; ?>
                             <td class="text-end">
                                 <?php 
-                                $balance = $data['total_income'] - $data['total_expense'];
+                                $balance = $current_year_data['incomes'][$i] - $current_year_data['expenses'][$i];
                                 $color = $balance >= 0 ? 'text-success' : 'text-danger';
                                 echo '<span class="' . $color . '">' . number_format($balance) . '円</span>';
                                 ?>
@@ -215,14 +294,53 @@ $chartData = [
         let pieChart = null;
         const chartData = <?php echo json_encode($chartData); ?>;
 
+        // 年の変更
+        function changeYear(year) {
+            window.location.href = 'analysis.php?year=' + year;
+        }
+
+        // 前年比較の切り替え
+        function toggleYearComparison() {
+            const isComparing = document.getElementById('compareLastYear').checked;
+            
+            // 前年のデータセットを表示/非表示
+            const previousDatasets = [
+                myChart.data.datasets.find(d => d.label === '収入（前年）'),
+                myChart.data.datasets.find(d => d.label === '支出（合計）（前年）'),
+                ...chartData.previousMethodDatasets.map(d => 
+                    myChart.data.datasets.find(cd => cd.label === d.label)
+                )
+            ];
+
+            previousDatasets.forEach(dataset => {
+                if (dataset) {
+                    dataset.hidden = !isComparing;
+                }
+            });
+
+            myChart.update();
+        }
+
         // 支払方法の表示/非表示を切り替える関数
         function togglePaymentMethod(methodId) {
             if (myChart) {
-                const methodDataset = myChart.data.datasets.find(dataset => dataset.methodId === methodId);
+                // 現在年のデータセット
+                const methodDataset = myChart.data.datasets.find(dataset => 
+                    dataset.methodId === methodId && !dataset.label.includes('（前年）')
+                );
                 if (methodDataset) {
                     methodDataset.hidden = !methodDataset.hidden;
-                    myChart.update();
                 }
+
+                // 前年のデータセット
+                const previousMethodDataset = myChart.data.datasets.find(dataset => 
+                    dataset.methodId === methodId && dataset.label.includes('（前年）')
+                );
+                if (previousMethodDataset && !previousMethodDataset.hidden) {
+                    previousMethodDataset.hidden = methodDataset.hidden;
+                }
+
+                myChart.update();
             }
         }
 
@@ -270,13 +388,32 @@ $chartData = [
                     fill: false
                 },
                 {
+                    label: '収入（前年）',
+                    data: chartData.previousIncomes,
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+                    fill: false,
+                    hidden: true,
+                    borderDash: [5, 5]
+                },
+                {
                     label: '支出（合計）',
                     data: chartData.expenses,
                     borderColor: 'rgb(255, 99, 132)',
                     tension: 0.1,
                     fill: false
                 },
-                ...chartData.methodDatasets
+                {
+                    label: '支出（合計）（前年）',
+                    data: chartData.previousExpenses,
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.1,
+                    fill: false,
+                    hidden: true,
+                    borderDash: [5, 5]
+                },
+                ...chartData.methodDatasets,
+                ...chartData.previousMethodDatasets
             ];
 
             // 折れ線グラフの初期化
