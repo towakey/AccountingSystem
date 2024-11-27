@@ -744,7 +744,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                                 </div>
                             </div>
                             <div class="text-end mb-2">
-                                <button type="button" class="btn btn-outline-primary btn-sm" id="modal_add_item">
+                                <button type="button" class="btn btn-outline-primary btn-sm" id="modal_add_item" data-modal-id="addTransactionModal">
                                     <i class="bi bi-plus-circle"></i> 項目を追加
                                 </button>
                             </div>
@@ -840,13 +840,16 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
 </html>
 
 <script>
-    // グローバル変数としてモーダルインスタンスを保持
-    let settingsModalInstance;
-    let editModalInstance;
-
-    // モーダルの初期化
+    // DOMContentLoadedイベントで全ての初期化を行う
     document.addEventListener('DOMContentLoaded', function() {
-        // 編集モーダルの初期化
+        // グローバル変数の初期化
+        let settingsModalInstance;
+        let editModalInstance;
+        let currentPage = 1;
+        const itemsPerPage = <?php echo $items_per_page; ?>;
+        let isLoading = false;
+
+        // モーダルの初期化
         const editModal = document.getElementById('editTransactionModal');
         if (editModal) {
             editModalInstance = new bootstrap.Modal(editModal);
@@ -858,25 +861,69 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
             settingsModalInstance = new bootstrap.Modal(settingsModal);
         }
 
+        // 設定ボタンのイベントリスナー
+        const settingsButton = document.querySelector('.settings-button');
+        if (settingsButton) {
+            settingsButton.addEventListener('click', function() {
+                if (settingsModalInstance) {
+                    settingsModalInstance.show();
+                }
+            });
+        }
+
         // 決済方法のリストを読み込む
         loadPaymentMethods();
 
-        // 設定ボタンのイベントリスナー
-        document.querySelector('.settings-button').addEventListener('click', function() {
-            if (settingsModalInstance) {
-                settingsModalInstance.show();
+        // 項目追加ボタンの設定
+        const addItemButtons = document.querySelectorAll('[id^="modal_add_item"]');
+        addItemButtons.forEach(button => {
+            if (button) {
+                button.addEventListener('click', function() {
+                    const modalId = this.closest('.modal').id || 'modal';
+                    const container = document.getElementById(`${modalId}_items_container`);
+                    if (!container) return;
+                    
+                    const itemCount = container.getElementsByClassName('item-row').length;
+                    const newItem = document.createElement('div');
+                    newItem.className = 'item-row mb-2';
+                    newItem.innerHTML = `
+                        <div class="row">
+                            <div class="col-7">
+                                <input type="text" name="items[${itemCount}][name]" class="form-control item-name" list="product_list" placeholder="項目名" required>
+                            </div>
+                            <div class="col-4">
+                                <input type="number" name="items[${itemCount}][price]" class="form-control item-price" placeholder="金額" oninput="updateTotalPrice('${modalId}')" required>
+                            </div>
+                            <div class="col-1">
+                                <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-row').remove(); updateTotalPrice('${modalId}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(newItem);
+                });
             }
+        });
+
+        // 削除ボタンの初期設定
+        document.querySelectorAll('.btn-remove-item').forEach(button => {
+            button.addEventListener('click', function() {
+                this.closest('.item-row').remove();
+                updateTotalPrice(this.closest('form').id);
+            });
         });
     });
 
-    // 決済方法の管理を表示
+    // 設定モーダルを表示する関数
     function showSettings() {
         if (settingsModalInstance) {
             settingsModalInstance.show();
         }
     }
 
-    window.changeMonth = function(diff) {
+    // 月を変更する関数
+    function changeMonth(diff) {
         const urlParams = new URLSearchParams(window.location.search);
         let currentMonth = urlParams.get('month') || '<?php echo date('Y-m'); ?>';
         
@@ -892,7 +939,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
         window.location.href = window.location.pathname + '?' + urlParams.toString();
     };
 
-    // 取引の削除
     async function deleteTransaction(id) {
         if (!id) {
             console.error('取引IDが指定されていません');
@@ -954,7 +1000,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
         }
     }
 
-    // 取引の編集
     async function editTransaction(id) {
         try {
             console.log('編集開始 - 取引ID:', id);
@@ -1177,55 +1222,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
             priceInput.value = total;
         }
     }
-</script>
 
-<script>
-    // 項目追加ボタンのクリックイベントリスナー
-    document.addEventListener('DOMContentLoaded', function() {
-        document.getElementById('modal_add_item').addEventListener('click', function() {
-            const container = document.getElementById('modal_items_container');
-            const itemCount = container.getElementsByClassName('item-row').length;
-            
-            const newItem = document.createElement('div');
-            newItem.className = 'item-row mb-2';
-            newItem.innerHTML = `
-                <div class="row">
-                    <div class="col-md-6">
-                        <input type="text" name="items[${itemCount}][name]" class="form-control item-name" list="product_list" placeholder="項目名">
-                    </div>
-                    <div class="col-md-4">
-                        <input type="number" name="items[${itemCount}][price]" class="form-control item-price" placeholder="金額" oninput="updateTotalPrice('addTransactionModal')">
-                    </div>
-                    <div class="col-md-2">
-                        <button type="button" class="btn btn-outline-danger btn-remove-item" onclick="removeItem(this)">
-                            <i class="bi bi-trash"></i>
-                        </button>
-                    </div>
-                </div>
-            `;
-            
-            container.appendChild(newItem);
-        });
-
-        // 削除ボタンの初期設定
-        document.querySelectorAll('.btn-remove-item').forEach(button => {
-            button.addEventListener('click', function() {
-                this.closest('.item-row').remove();
-                updateTotalPrice('addTransactionModal');
-            });
-        });
-    });
-
-    // 項目削除関数
-    function removeItem(button) {
-        button.closest('.item-row').remove();
-        updateTotalPrice('addTransactionModal');
-    }
-</script>
-
-<script src="assets/js/payment_methods.js"></script>
-
-<script>
     let currentPage = 1;
     const itemsPerPage = <?php echo $items_per_page; ?>;
     let isLoading = false;
@@ -1307,3 +1304,5 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
         return div.innerHTML;
     }
 </script>
+
+<script src="assets/js/payment_methods.js"></script>
