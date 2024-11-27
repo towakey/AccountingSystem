@@ -334,7 +334,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="mb-3 payment-method-field">
+                        <div class="mb-3">
                             <label for="payment_method_id" class="form-label">決済手段</label>
                             <select name="payment_method_id" id="payment_method_id" class="form-select" required>
                                 <?php foreach ($payment_methods as $method): ?>
@@ -892,42 +892,39 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
         loadPaymentMethods();
 
         // 項目追加ボタンの設定
-        const addItemButtons = document.querySelectorAll('[id^="modal_add_item"]');
-        addItemButtons.forEach(button => {
-            if (button) {
-                button.addEventListener('click', function() {
-                    const modalId = this.closest('.modal').id || 'modal';
-                    const container = document.getElementById(`${modalId}_items_container`);
-                    if (!container) return;
-                    
-                    const itemCount = container.getElementsByClassName('item-row').length;
-                    const newItem = document.createElement('div');
-                    newItem.className = 'item-row mb-2';
-                    newItem.innerHTML = `
-                        <div class="row">
-                            <div class="col-7">
-                                <input type="text" name="items[${itemCount}][name]" class="form-control item-name" list="product_list" placeholder="項目名" required>
-                            </div>
-                            <div class="col-4">
-                                <input type="number" name="items[${itemCount}][price]" class="form-control item-price" placeholder="金額" oninput="updateTotalPrice('${modalId}')" required>
-                            </div>
-                            <div class="col-1">
-                                <button type="button" class="btn btn-outline-danger btn-sm" onclick="this.closest('.item-row').remove(); updateTotalPrice('${modalId}')">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </div>
+        const addItemButton = document.getElementById('modal_add_item');
+        if (addItemButton) {
+            addItemButton.addEventListener('click', function() {
+                const container = document.getElementById('modal_items_container');
+                if (!container) return;
+                
+                const itemCount = container.getElementsByClassName('item-row').length;
+                const newItem = document.createElement('div');
+                newItem.className = 'item-row mb-2';
+                newItem.innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <input type="text" name="items[${itemCount}][name]" class="form-control item-name" list="product_list" placeholder="項目名">
                         </div>
-                    `;
-                    container.appendChild(newItem);
-                });
-            }
-        });
+                        <div class="col-md-4">
+                            <input type="number" name="items[${itemCount}][price]" class="form-control item-price" placeholder="金額" oninput="updateTotalPrice('addTransactionModal')">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-outline-danger btn-remove-item" onclick="this.closest('.item-row').remove(); updateTotalPrice('addTransactionModal')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(newItem);
+            });
+        }
 
         // 削除ボタンの初期設定
         document.querySelectorAll('.btn-remove-item').forEach(button => {
             button.addEventListener('click', function() {
                 this.closest('.item-row').remove();
-                updateTotalPrice(this.closest('form').id);
+                updateTotalPrice('addTransactionModal');
             });
         });
     });
