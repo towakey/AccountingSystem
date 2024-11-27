@@ -131,24 +131,39 @@ $chartData = [
     <div class="container mt-4">
         <h2>月次収支推移</h2>
         
-        <div class="card mb-4">
-            <div class="card-header">
-                <div class="row align-items-center">
-                    <div class="col">
-                        <h5 class="mb-0">収支グラフ</h5>
-                    </div>
-                    <div class="col-auto">
-                        <div class="btn-group" role="group">
-                            <?php foreach ($payment_methods as $method): ?>
-                            <input type="checkbox" class="btn-check" id="btn-<?php echo htmlspecialchars($method['id']); ?>" checked autocomplete="off" onchange="togglePaymentMethod(<?php echo $method['id']; ?>)">
-                            <label class="btn btn-outline-secondary btn-sm" for="btn-<?php echo htmlspecialchars($method['id']); ?>"><?php echo htmlspecialchars($method['name']); ?></label>
-                            <?php endforeach; ?>
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <div class="row align-items-center">
+                            <div class="col">
+                                <h5 class="mb-0">収支グラフ</h5>
+                            </div>
+                            <div class="col-auto">
+                                <div class="btn-group" role="group">
+                                    <?php foreach ($payment_methods as $method): ?>
+                                    <input type="checkbox" class="btn-check" id="btn-<?php echo htmlspecialchars($method['id']); ?>" checked autocomplete="off" onchange="togglePaymentMethod(<?php echo $method['id']; ?>)">
+                                    <label class="btn btn-outline-secondary btn-sm" for="btn-<?php echo htmlspecialchars($method['id']); ?>"><?php echo htmlspecialchars($method['name']); ?></label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
                         </div>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="monthlyChart"></canvas>
                     </div>
                 </div>
             </div>
-            <div class="card-body">
-                <canvas id="monthlyChart"></canvas>
+            
+            <div class="col-md-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h5 class="mb-0">支払方法別割合</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="pieChart"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -197,6 +212,7 @@ $chartData = [
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         let myChart = null;
+        let pieChart = null;
         const chartData = <?php echo json_encode($chartData); ?>;
 
         // 支払方法の表示/非表示を切り替える関数
@@ -210,9 +226,39 @@ $chartData = [
             }
         }
 
+        // パイチャートのデータを計算する関数
+        function calculatePieChartData() {
+            const methodTotals = {};
+            let totalExpense = 0;
+
+            // 各支払方法の合計を計算
+            chartData.methodDatasets.forEach(method => {
+                const sum = method.data.reduce((acc, curr) => acc + curr, 0);
+                methodTotals[method.label] = sum;
+                totalExpense += sum;
+            });
+
+            // パーセンテージを計算
+            const labels = [];
+            const data = [];
+            const backgroundColor = [];
+
+            chartData.methodDatasets.forEach(method => {
+                const percentage = (methodTotals[method.label] / totalExpense) * 100;
+                if (percentage > 0) {  // 0%の場合は表示しない
+                    labels.push(method.label);
+                    data.push(percentage);
+                    backgroundColor.push(method.borderColor);
+                }
+            });
+
+            return { labels, data, backgroundColor };
+        }
+
         // グラフの初期化
         window.addEventListener('load', function() {
             const ctx = document.getElementById('monthlyChart').getContext('2d');
+            const pieCtx = document.getElementById('pieChart').getContext('2d');
             
             // 基本のデータセット
             const datasets = [
@@ -233,6 +279,7 @@ $chartData = [
                 ...chartData.methodDatasets
             ];
 
+            // 折れ線グラフの初期化
             myChart = new Chart(ctx, {
                 type: 'line',
                 data: {
@@ -258,6 +305,34 @@ $chartData = [
                                     return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + '円';
                                 }
                             }
+                        }
+                    }
+                }
+            });
+
+            // パイチャートの初期化
+            const pieData = calculatePieChartData();
+            pieChart = new Chart(pieCtx, {
+                type: 'pie',
+                data: {
+                    labels: pieData.labels,
+                    datasets: [{
+                        data: pieData.data,
+                        backgroundColor: pieData.backgroundColor
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.label + ': ' + context.parsed.toFixed(1) + '%';
+                                }
+                            }
+                        },
+                        legend: {
+                            position: 'bottom'
                         }
                     }
                 }
