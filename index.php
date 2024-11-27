@@ -29,8 +29,8 @@ if (isset($_POST['submit'])) {
         // 取引データの登録
         $stmt = $pdo->prepare("
             INSERT INTO kakeibo_data 
-            (user_id, date, store_name, price, payment_method_id, note, transaction_type) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (user_id, date, store_name, price, payment_method_id, note, transaction_type, category) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $user_id,
@@ -39,7 +39,8 @@ if (isset($_POST['submit'])) {
             $_POST['price'],
             $_POST['payment_method_id'],
             $_POST['note'] ?? '',
-            $_POST['transaction_type']
+            $_POST['transaction_type'],
+            $_POST['category'] ?? ''
         ]);
         
         $transaction_id = $pdo->lastInsertId();
@@ -325,6 +326,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                                 <?php endforeach; ?>
                             </datalist>
                         </div>
+                        <div class="mb-3">
+                            <label for="category" class="form-label">カテゴリー</label>
+                            <select name="category" id="category" class="form-select" required>
+                                <?php foreach (TRANSACTION_CATEGORIES as $category): ?>
+                                    <option value="<?= htmlspecialchars($category) ?>"><?= htmlspecialchars($category) ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
                         <div class="mb-3 payment-method-field">
                             <label for="payment_method_id" class="form-label">決済手段</label>
                             <select name="payment_method_id" id="payment_method_id" class="form-select" required>
@@ -471,31 +480,23 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                     <thead>
                         <tr>
                             <th>日付</th>
-                            <th>取引種別</th>
                             <th>取引先</th>
-                            <th class="text-end">金額</th>
+                            <th>カテゴリー</th>
                             <th>決済方法</th>
-                            <th>備考</th>
-                            <th colspan="2" class="text-center">操作</th>
+                            <th class="text-end">金額</th>
+                            <th>操作</th>
                         </tr>
                     </thead>
                     <tbody id="transactionsTableBody">
                         <?php foreach ($transactions as $data): ?>
                             <tr>
                                 <td><?= date('Y/m/d', strtotime($data['date'])) ?></td>
-                                <td>
-                                    <?php if ($data['transaction_type'] === 'income'): ?>
-                                        <span class="badge bg-success">収入</span>
-                                    <?php else: ?>
-                                        <span class="badge bg-danger">支出</span>
-                                    <?php endif; ?>
-                                </td>
                                 <td><?= htmlspecialchars($data['store_name']) ?></td>
+                                <td><?= htmlspecialchars($data['category']) ?></td>
+                                <td><?= htmlspecialchars($data['payment_method_name']) ?></td>
                                 <td class="text-end">
                                     <?= $data['transaction_type'] === 'income' ? '+' : '-' ?><?= number_format($data['price']) ?>円
                                 </td>
-                                <td><?= htmlspecialchars($data['payment_method_name']) ?></td>
-                                <td><?= $data['note'] ? htmlspecialchars($data['note']) : '-' ?></td>
                                 <td class="text-end">
                                     <button type="button" class="btn btn-sm btn-primary" onclick="editTransaction(<?php echo $data['id']; ?>)">
                                         <i class="bi bi-pencil"></i> 編集
@@ -574,6 +575,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                         <div class="mb-3">
                             <label for="edit_store_name" class="form-label">取引先</label>
                             <input type="text" name="store_name" id="edit_store_name" class="form-control" list="stores" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_category" class="form-label">カテゴリー</label>
+                            <select name="category" id="edit_category" class="form-select" required>
+                                <?php foreach (TRANSACTION_CATEGORIES as $category): ?>
+                                    <option value="<?= htmlspecialchars($category) ?>"><?= htmlspecialchars($category) ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                         <div class="mb-3">
                             <label for="edit_payment_method" class="form-label">決済方法</label>
@@ -710,6 +719,14 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                         <div class="mb-3">
                             <label for="modal_store_name" class="form-label">取引先</label>
                             <input type="text" name="store_name" id="modal_store_name" class="form-control" list="store_list" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="modal_category" class="form-label">カテゴリー</label>
+                            <select name="category" id="modal_category" class="form-select" required>
+                                <?php foreach (TRANSACTION_CATEGORIES as $category): ?>
+                                    <option value="<?= htmlspecialchars($category) ?>"><?= htmlspecialchars($category) ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
                         <div class="mb-3 payment-method-field">
                             <label for="modal_payment_method_id" class="form-label">決済手段</label>
@@ -1039,6 +1056,13 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
             form.querySelector('[name="store_name"]').value = data.store_name || '';
             console.log('取引先設定:', data.store_name);
             
+            // カテゴリー
+            const categorySelect = form.querySelector(`select[name="category"]`);
+            if (categorySelect) {
+                categorySelect.value = data.category || '';
+                console.log('カテゴリー設定:', data.category);
+            }
+            
             // 決済方法
             form.querySelector('[name="payment_method_id"]').value = data.payment_method_id;
             console.log('決済方法設定:', data.payment_method_id);
@@ -1117,6 +1141,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                 date: form.querySelector('[name="date"]').value,
                 transaction_type: form.querySelector('input[name="transaction_type"]:checked')?.value,
                 store_name: form.querySelector('[name="store_name"]').value,
+                category: form.querySelector('select[name="category"]').value,
                 payment_method_id: form.querySelector('[name="payment_method_id"]').value,
                 price: parseInt(form.querySelector('[name="price"]').value),
                 note: form.querySelector('[name="note"]').value,
@@ -1130,6 +1155,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
             if (!formData.date) throw new Error('日付を入力してください');
             if (!formData.transaction_type) throw new Error('取引種別を選択してください');
             if (!formData.store_name) throw new Error('取引先を入力してください');
+            if (!formData.category) throw new Error('カテゴリーを選択してください');
             if (!formData.payment_method_id) throw new Error('決済方法を選択してください');
             if (!formData.price) throw new Error('金額を入力してください');
 
@@ -1249,18 +1275,13 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td>${formatDate(transaction.date)}</td>
-                        <td>
-                            ${transaction.transaction_type === 'income' 
-                                ? '<span class="badge bg-success">収入</span>' 
-                                : '<span class="badge bg-danger">支出</span>'}
-                        </td>
                         <td>${escapeHtml(transaction.store_name)}</td>
+                        <td>${escapeHtml(transaction.category)}</td>
+                        <td>${escapeHtml(transaction.payment_method_name)}</td>
                         <td class="text-end">
                             ${transaction.transaction_type === 'income' ? '+' : '-'}${numberFormat(transaction.price)}円
                         </td>
-                        <td>${escapeHtml(transaction.payment_method_name)}</td>
-                        <td>${transaction.note ? escapeHtml(transaction.note) : '-'}</td>
-                        <td class="text-end">
+                        <td>
                             <button type="button" class="btn btn-sm btn-primary" onclick="editTransaction(${transaction.id})">
                                 <i class="bi bi-pencil"></i> 編集
                             </button>

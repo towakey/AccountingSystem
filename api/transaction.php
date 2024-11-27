@@ -6,7 +6,8 @@ require_once '../db.php';
 // ユーザー認証チェック
 if (!isset($_SESSION['user_id'])) {
     http_response_code(401);
-    exit(json_encode(['success' => false, 'message' => '認証が必要です']));
+    echo json_encode(['error' => '認証が必要です']);
+    exit;
 }
 
 $user_id = $_SESSION['user_id'];
@@ -112,6 +113,7 @@ try {
             if (empty($data['store_name'])) throw new Exception('取引先が指定されていません');
             if (!isset($data['price'])) throw new Exception('金額が指定されていません');
             if (empty($data['payment_method_id'])) throw new Exception('決済方法が指定されていません');
+            if (empty($data['category'])) throw new Exception('カテゴリーが指定されていません');
 
             // 決済方法の存在確認
             $stmt = $pdo->prepare("SELECT id FROM payment_methods WHERE id = ? AND user_id = ?");
@@ -128,6 +130,7 @@ try {
                     store_name = ?, 
                     price = ?,
                     payment_method_id = ?, 
+                    category = ?,
                     note = ?
                 WHERE id = ? AND user_id = ?
             ");
@@ -138,6 +141,7 @@ try {
                 $data['store_name'],
                 $data['price'],
                 $data['payment_method_id'],
+                $data['category'],
                 $data['note'] ?? null,
                 $transaction_id,
                 $user_id
