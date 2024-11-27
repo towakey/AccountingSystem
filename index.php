@@ -190,6 +190,35 @@ $stmt = $pdo->prepare("
 $stmt->execute([$user_id, $month_start, $month_end]);
 $payment_totals = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// カテゴリー別集計を取得
+$stmt = $pdo->prepare("
+    SELECT 
+        category,
+        SUM(price) as total
+    FROM kakeibo_data 
+    WHERE user_id = ? 
+    AND date BETWEEN ? AND ?
+    AND transaction_type = 'expense'
+    GROUP BY category
+    ORDER BY total DESC
+");
+$stmt->execute([$user_id, $month_start, $month_end]);
+$category_totals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// カテゴリー別の配列を準備
+$category_labels = [];
+$category_data = [];
+$category_colors = [
+    '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF',
+    '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF9F40',
+    '#36A2EB', '#FFCE56', '#9966FF'
+];
+
+foreach ($category_totals as $index => $total) {
+    $category_labels[] = $total['category'];
+    $category_data[] = $total['total'];
+}
+
 // ページネーションの設定を取得
 $stmt = $pdo->prepare("
     SELECT value 
@@ -265,6 +294,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
     <?php endif; ?>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .alert-dismissible {
             position: fixed;
@@ -454,6 +484,30 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                             <?php endforeach; ?>
                         </div>
                         <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">決済方法別支出</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="paymentChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">カテゴリー別支出</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="categoryChart"></canvas>
                     </div>
                 </div>
             </div>
@@ -1324,3 +1378,69 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
 </script>
 
 <script src="assets/js/payment_methods.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 決済方法別グラフの設定
+        const paymentCtx = document.getElementById('paymentChart').getContext('2d');
+        new Chart(paymentCtx, {
+            type: 'pie',
+            data: {
+                labels: <?php echo json_encode(array_column($payment_totals, 'payment_method')); ?>,
+                datasets: [{
+                    data: <?php echo json_encode(array_column($payment_totals, 'total')); ?>,
+                    backgroundColor: <?php echo json_encode(array_slice($category_colors, 0, count($payment_totals))); ?>
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.raw;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${context.label}: ¥${value.toLocaleString()} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // カテゴリー別グラフの設定
+        const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+        new Chart(categoryCtx, {
+            type: 'pie',
+            data: {
+                labels: <?php echo json_encode($category_labels); ?>,
+                datasets: [{
+                    data: <?php echo json_encode($category_data); ?>,
+                    backgroundColor: <?php echo json_encode(array_slice($category_colors, 0, count($category_totals))); ?>
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const value = context.raw;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${context.label}: ¥${value.toLocaleString()} (${percentage}%)`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    });
+</script>
