@@ -74,7 +74,9 @@ if (isset($_POST['submit'])) {
 
         $pdo->commit();
         $_SESSION['alert'] = ['type' => 'success', 'message' => '取引を登録しました。'];
-        header("Location: " . $_SERVER['PHP_SELF']);
+        // 選択された月のページにリダイレクト
+        $redirect_month = isset($_POST['selected_month']) ? $_POST['selected_month'] : date('Y-m');
+        header("Location: " . $_SERVER['PHP_SELF'] . "?month=" . $redirect_month);
         exit;
     } catch (PDOException $e) {
         $pdo->rollBack();
@@ -360,6 +362,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                 <!-- 入力フォーム -->
                 <div id="inputForm" class="mb-4" <?= $user_settings['input_mode'] === 'modal' ? 'style="display: none;"' : '' ?>>
                     <form method="post" class="needs-validation" novalidate>
+                        <input type="hidden" name="selected_month" value="<?php echo $selected_month; ?>">
                         <div class="mb-3">
                             <label for="date" class="form-label">日付</label>
                             <input type="date" name="date" id="date" class="form-control" required value="<?php echo date('Y-m-d'); ?>">
@@ -651,6 +654,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                 </div>
                 <div class="modal-body">
                     <form id="editTransactionForm" onsubmit="return false;">
+                        <input type="hidden" name="selected_month" value="<?php echo $selected_month; ?>">
                         <input type="hidden" name="id">
                         <div class="mb-3">
                             <label for="edit_date" class="form-label">日付</label>
@@ -795,6 +799,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
                 <form method="post" class="needs-validation" novalidate>
+                    <input type="hidden" name="selected_month" value="<?php echo $selected_month; ?>">
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="modal_date" class="form-label">日付</label>
