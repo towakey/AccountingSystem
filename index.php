@@ -307,7 +307,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
     exit;
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -1423,6 +1422,59 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // 取引種類の変更時に決済手段を更新する関数
+        function updatePaymentMethod(transactionType, formElement) {
+            const paymentMethodSelect = formElement.querySelector('select[name="payment_method_id"]');
+            if (!paymentMethodSelect) return;
+
+            if (transactionType === 'income') {
+                paymentMethodSelect.innerHTML = `
+                    <option value="1">振り込み</option>
+                    <option value="2">現金</option>
+                `;
+            } else {
+                paymentMethodSelect.innerHTML = `
+                    <?php foreach ($payment_methods as $method): ?>
+                        <option value="<?= $method['id'] ?>" <?= $method['is_default'] ? 'selected' : '' ?>>
+                            <?= htmlspecialchars($method['name']) ?>
+                            <?php if ($method['withdrawal_day']): ?>
+                                (引落: <?= $method['withdrawal_day'] ?>日)
+                            <?php endif; ?>
+                        </option>
+                    <?php endforeach; ?>
+                `;
+            }
+        }
+
+        // ラジオボタンの変更イベントを監視
+        document.querySelectorAll('input[type="radio"][name="transaction_type"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                const form = this.closest('form');
+                updatePaymentMethod(this.value, form);
+            });
+        });
+
+        // 初期表示時の設定
+        document.querySelectorAll('form').forEach(form => {
+            const checkedRadio = form.querySelector('input[type="radio"][name="transaction_type"]:checked');
+            if (checkedRadio) {
+                updatePaymentMethod(checkedRadio.value, form);
+            }
+        });
+
+        // 編集モーダルでの取引種類変更時の処理
+        const editTransactionTypeRadios = document.querySelectorAll('#editTransactionModal input[name="transaction_type"]');
+        editTransactionTypeRadios.forEach(radio => {
+            radio.addEventListener('change', function() {
+                const form = document.getElementById('editTransactionForm');
+                updatePaymentMethod(this.value, form);
+            });
+        });
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
         // 決済方法別グラフの設定
         const paymentCtx = document.getElementById('paymentChart').getContext('2d');
         new Chart(paymentCtx, {
@@ -1501,7 +1553,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
             $colorIndex++;
         }
         ?>
-
         new Chart(past6MonthsCategoryCtx, {
             type: 'bar',
             data: {
