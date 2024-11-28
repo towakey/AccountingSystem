@@ -595,7 +595,17 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                                 <td><?= htmlspecialchars($data['category']) ?></td>
                                 <td><?= htmlspecialchars($data['payment_method_name']) ?></td>
                                 <td class="text-end">
-                                    <?= $data['transaction_type'] === 'income' ? '+' : '-' ?><?= number_format($data['price']) ?>円
+                                    <?php 
+                                    $price = $data['price'];
+                                    $is_invalid = !is_numeric($price) || $price === '';
+                                    ?>
+                                    <?php if ($is_invalid): ?>
+                                        <i class="bi bi-exclamation-triangle-fill text-warning" 
+                                           data-bs-toggle="tooltip" 
+                                           data-bs-placement="top" 
+                                           title="金額データに問題があります"></i>
+                                    <?php endif; ?>
+                                    <?= $data['transaction_type'] === 'income' ? '+' : '-' ?><?= number_format(floatval($price)) ?>円
                                 </td>
                                 <td class="text-end">
                                     <button type="button" class="btn btn-sm btn-primary" onclick="editTransaction(<?php echo $data['id']; ?>)">
@@ -1427,19 +1437,36 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // ツールチップの初期化
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+</script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
         // 取引種類の変更時に決済手段を更新する関数
         function updatePaymentMethod(transactionType, formElement) {
             const paymentMethodSelect = formElement.querySelector('select[name="payment_method_id"]');
             if (!paymentMethodSelect) return;
 
             if (transactionType === 'income') {
+                // 入金時は振り込みと現金のみ表示
                 paymentMethodSelect.innerHTML = `
                     <option value="1">振り込み</option>
                     <option value="2">現金</option>
                 `;
             } else {
+                // 支出時は全ての決済方法を表示（引き落としがデフォルト）
                 paymentMethodSelect.innerHTML = `
-                    <?php foreach ($payment_methods as $method): ?>
+                    <?php
+                    // 支出用の決済方法リストを取得
+                    $stmt = $pdo->prepare("SELECT * FROM payment_methods WHERE user_id = ? ORDER BY is_default DESC, name ASC");
+                    $stmt->execute([$user_id]);
+                    $payment_methods = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    foreach ($payment_methods as $method): ?>
                         <option value="<?= $method['id'] ?>" <?= $method['is_default'] ? 'selected' : '' ?>>
                             <?= htmlspecialchars($method['name']) ?>
                             <?php if ($method['withdrawal_day']): ?>
