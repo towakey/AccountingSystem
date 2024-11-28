@@ -219,6 +219,37 @@ foreach ($category_totals as $index => $total) {
     $category_data[] = $total['total'];
 }
 
+// 過去6ヶ月分のカテゴリ別支出データを取得
+$months = [];
+$month_data = [];
+for ($i = 5; $i >= 0; $i--) {
+    $target_month = date('Y-m', strtotime("-$i months", strtotime($selected_month)));
+    $months[] = date('n月', strtotime($target_month));
+    
+    $month_start = $target_month . '-01';
+    $month_end = date('Y-m-t', strtotime($month_start));
+    
+    $stmt = $pdo->prepare("
+        SELECT 
+            category,
+            SUM(price) as total
+        FROM kakeibo_data 
+        WHERE user_id = ? 
+        AND date BETWEEN ? AND ?
+        AND transaction_type = 'expense'
+        GROUP BY category
+    ");
+    $stmt->execute([$user_id, $month_start, $month_end]);
+    $month_totals = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    foreach ($month_totals as $total) {
+        if (!isset($month_data[$total['category']])) {
+            $month_data[$total['category']] = array_fill(0, 6, 0);
+        }
+        $month_data[$total['category']][5-$i] = $total['total'];
+    }
+}
+
 // ページネーションの設定を取得
 $stmt = $pdo->prepare("
     SELECT value 
@@ -513,6 +544,19 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
             </div>
         </div>
 
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">過去6ヶ月のカテゴリ別支出</h5>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="past6MonthsCategoryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 取引履歴 -->
         <div class="card mt-4">
             <div class="card-header d-flex justify-content-between align-items-center">
@@ -782,7 +826,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                                 <?php endforeach; ?>
                             </select>
                         </div>
-                        <div class="mb-3 payment-method-field">
+                        <div class="mb-3">
                             <label for="modal_payment_method_id" class="form-label">決済手段</label>
                             <select name="payment_method_id" id="modal_payment_method_id" class="form-select" required>
                                 <?php foreach ($payment_methods as $method): ?>
@@ -1377,8 +1421,6 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
     }
 </script>
 
-<script src="assets/js/payment_methods.js"></script>
-
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         // 決済方法別グラフの設定
@@ -1442,5 +1484,60 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                 }
             }
         });
+
+        // 過去6ヶ月のカテゴリ別グラフの設定
+        const past6MonthsCategoryCtx = document.getElementById('past6MonthsCategoryChart').getContext('2d');
+        const categoryDatasets = [];
+        <?php 
+        $colorIndex = 0;
+        foreach ($month_data as $category => $values) {
+            echo "categoryDatasets.push({
+                label: " . json_encode($category) . ",
+                data: " . json_encode($values) . ",
+                backgroundColor: " . json_encode($category_colors[$colorIndex % count($category_colors)]) . ",
+                borderColor: " . json_encode($category_colors[$colorIndex % count($category_colors)]) . ",
+                borderWidth: 1
+            });\n";
+            $colorIndex++;
+        }
+        ?>
+
+        new Chart(past6MonthsCategoryCtx, {
+            type: 'bar',
+            data: {
+                labels: <?php echo json_encode($months); ?>,
+                datasets: categoryDatasets
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        stacked: true
+                    },
+                    y: {
+                        stacked: true,
+                        ticks: {
+                            callback: function(value) {
+                                return '¥' + value.toLocaleString();
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'right'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ¥${context.raw.toLocaleString()}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
     });
 </script>
+
+<script src="assets/js/payment_methods.js"></script>
