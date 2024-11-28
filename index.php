@@ -365,7 +365,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                         <input type="hidden" name="selected_month" value="<?php echo $selected_month; ?>">
                         <div class="mb-3">
                             <label for="date" class="form-label">日付</label>
-                            <input type="date" name="date" id="date" class="form-control" required value="<?php echo date('Y-m-d'); ?>">
+                            <input type="date" name="date" id="date" class="form-control" required value="<?php echo $selected_month . '-01'; ?>">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">取引種別</label>
@@ -803,7 +803,7 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                     <div class="modal-body">
                         <div class="mb-3">
                             <label for="modal_date" class="form-label">日付</label>
-                            <input type="date" name="date" id="modal_date" class="form-control" required value="<?php echo date('Y-m-d'); ?>">
+                            <input type="date" name="date" id="modal_date" class="form-control" required value="<?php echo $selected_month . '-01'; ?>">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">取引種別</label>
@@ -1009,10 +1009,10 @@ if (isset($_GET['api']) && $_GET['api'] === 'get_more_transactions') {
                             <input type="text" name="items[${itemCount}][name]" class="form-control item-name" list="product_list" placeholder="項目名">
                         </div>
                         <div class="col-md-4">
-                            <input type="number" name="items[${itemCount}][price]" class="form-control item-price" placeholder="金額" oninput="updateTotalPrice('addTransactionModal')">
+                            <input type="number" name="items[${itemCount}][price]" class="form-control item-price" placeholder="金額" oninput="updateTotalPrice('inputForm')">
                         </div>
                         <div class="col-md-2">
-                            <button type="button" class="btn btn-outline-danger btn-remove-item" onclick="this.closest('.item-row').remove(); updateTotalPrice('addTransactionModal')">
+                            <button type="button" class="btn btn-outline-danger btn-remove-item" style="display: none;">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </div>
