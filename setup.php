@@ -67,7 +67,7 @@ function createTables($db) {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
         name TEXT NOT NULL,
-        type TEXT NOT NULL CHECK(type IN ('cash', 'credit', 'debit', 'prepaid')),
+        type TEXT NOT NULL CHECK(type IN ('cash', 'credit', 'debit', 'prepaid', 'direct_debit', 'bank_transfer')),
         withdrawal_day INTEGER CHECK(withdrawal_day BETWEEN 1 AND 31),
         is_default INTEGER DEFAULT 0,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -195,7 +195,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $db->exec("INSERT OR IGNORE INTO payment_methods (user_id, name, type, is_default) 
                   VALUES 
                   ($admin_id, '現金', 'cash', 1),
-                  ($admin_id, '電子マネー', 'prepaid', 0)");
+                  ($admin_id, '電子マネー', 'prepaid', 0),
+                  ($admin_id, '引き落とし', 'direct_debit', 0),
+                  ($admin_id, '振り込み', 'bank_transfer', 0)");
 
         // 既存のユーザーにデフォルトの決済手段がない場合は追加
         $db->exec("INSERT OR IGNORE INTO payment_methods (user_id, name, type, is_default) 
@@ -224,6 +226,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                       FROM payment_methods 
                       WHERE payment_methods.user_id = users.id 
                       AND payment_methods.name = '電子マネー'
+                  )");
+
+        // 既存のユーザーに引き落としを追加
+        $db->exec("INSERT OR IGNORE INTO payment_methods (user_id, name, type, is_default) 
+                  SELECT 
+                    id, 
+                    '引き落とし', 
+                    'direct_debit', 
+                    0
+                  FROM users 
+                  WHERE NOT EXISTS (
+                      SELECT 1 
+                      FROM payment_methods 
+                      WHERE payment_methods.user_id = users.id 
+                      AND payment_methods.name = '引き落とし'
+                  )");
+
+        // 既存のユーザーに振り込みを追加
+        $db->exec("INSERT OR IGNORE INTO payment_methods (user_id, name, type, is_default) 
+                  SELECT 
+                    id, 
+                    '振り込み', 
+                    'bank_transfer', 
+                    0
+                  FROM users 
+                  WHERE NOT EXISTS (
+                      SELECT 1 
+                      FROM payment_methods 
+                      WHERE payment_methods.user_id = users.id 
+                      AND payment_methods.name = '振り込み'
                   )");
 
         // 既存のユーザーに設定がない場合は追加
